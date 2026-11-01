@@ -1,28 +1,28 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { BookOpen, CircleHelp, Download, EllipsisVertical, FileCode2, FilePlus2, Folder, FolderOpen, History, Link2, Lock, Pencil, Plus, RotateCcw, Sparkles, Trash2, Upload, X } from 'lucide-react'
-import { GlPythonWorkspace, addProjectFile, deleteProjectFile, initialProject, renameProjectFile, updateProjectFile } from 'glpython-editor'
+import { BookOpen, CircleHelp, Download, Info, EllipsisVertical, FileCode2, FilePlus2, Folder, FolderOpen, History, Link2, Lock, Pencil, Plus, RotateCcw, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { GlPythonWorkspace, addProjectFile, deleteProjectFile, renameProjectFile, updateProjectFile } from 'glpython-editor'
 import type { Project, ProjectFileKind, WorkspaceCommand } from 'glpython-editor'
 import 'glpython-editor/style.css'
 import { initializeAuth } from './auth'
 import { exportProjectZip, importProjectFolder, importProjectZip } from './projectStorage'
 import { buildShareUrl, readSharedLinkFromLocation } from './projectShare'
 import { fetchLibrary, libraryHost, type LibraryState } from './libraries'
-import { answerTabQueries, claimTabId, newTabEntry, otherLiveTabIds, projectFingerprint, pruneEntries, recentlyClosed, removeEntry, saveEntry, startTab, type TabEntry } from './tabProjects'
+import { answerTabQueries, claimTabId, isEmptyProject, newTabEntry, otherLiveTabIds, projectFingerprint, pruneEntries, recentlyClosed, removeEntry, saveEntry, startTab, type TabEntry } from './tabProjects'
 import { detectLocale, localeNames, saveLocale, translations, type Locale } from './i18n'
 
 // This tab's project to start with (see tabProjects.ts): a share link's
-// (`?project=`), else the one this tab held before, else the starter; for a
-// link that can't be read, an empty project and a notice. Runs once at
+// (`?project=`), else the one this tab held before, else one empty main.py -
+// learners arrive by links, and the editor's placeholder says what to do; for
+// a link that can't be read, that empty project and a notice. Runs once at
 // module load, since every useState initializer below needs the same result.
 const EMPTY_PROJECT: Project = { id: 'empty', name: translations[detectLocale()].emptyProjectName, mainFile: 'main.py', files: { 'main.py': { path: 'main.py', label: 'main', kind: 'python', code: '' } } }
-const startup = startTab(readSharedLinkFromLocation(), initialProject, EMPTY_PROJECT)
+const startup = startTab(readSharedLinkFromLocation(), EMPTY_PROJECT)
 // OneNote cuts links at 2,083 characters (Internet Explorer's old limit,
 // which other programs kept too): «Teilen» copies longer ones with a note.
 const LONG_LINK = 2083
 // A fresh tab offers the last project closed within a day: after Safari or
 // the iPad restarted, a tab comes back empty.
 const OFFER_CLOSED_MS = 24 * 60 * 60 * 1000
-const STARTER_FINGERPRINT = projectFingerprint(initialProject)
 
 // «vor 2 Stunden», «2 hours ago»; under a minute «gerade eben».
 function timeAgo(time: number, locale: string, justNow: string): string {
@@ -35,11 +35,23 @@ function timeAgo(time: number, locale: string, justNow: string): string {
   return format.format(Math.round(hours / 24), 'day')
 }
 
-// The IDE's version (the commit it was built from) and the one deployed now
-// (version.json, see vite.config.ts): a tab that stayed open - on an iPad
-// often for days - offers to load the new one.
+// The IDE's version (the commit it was built from, and when) and the one
+// deployed now (version.json, see vite.config.ts): a tab that stayed open -
+// on an iPad often for days - offers to load the new one; ⋮ «Info» shows it.
 declare const __GLPYTHON_IDE_VERSION__: string
+declare const __GLPYTHON_IDE_BUILT__: string
 const VERSION_CHECK_MS = 30 * 60 * 1000
+async function checkForNewVersion(): Promise<'current' | 'available' | 'failed'> {
+  if (import.meta.env.DEV) return 'current'
+  try {
+    const response = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' })
+    const { version } = await response.json() as { version?: string }
+    if (!version) return 'failed'
+    return version === __GLPYTHON_IDE_VERSION__ ? 'current' : 'available'
+  } catch {
+    return 'failed'
+  }
+}
 
 // Moves keyboard focus through a menu's items with the arrow keys, Home and
 // End, as a menu does; Escape is the caller's.
@@ -78,6 +90,10 @@ function App() {
   const [closedOffer, setClosedOffer] = useState<TabEntry[]>([])
   const [closedList, setClosedList] = useState<TabEntry[] | null>(null)
   const [updateAvailable, setUpdateAvailable] = useState(false)
+  // ⋮ «Info»: open, and the result of its «Nach Updates suchen».
+  const [isInfoOpen, setIsInfoOpen] = useState(false)
+  const [infoCheck, setInfoCheck] = useState<'idle' | 'checking' | 'current' | 'available' | 'failed'>('idle')
+  const infoDialogRef = useRef<HTMLDivElement | null>(null)
   // The project's libraries by URL (libraries.ts); a link that couldn't be
   // read; the length of a long link just copied.
   const [libraries, setLibraries] = useState<Record<string, LibraryState>>(() => startup.entry.libraries ?? {})
@@ -140,7 +156,7 @@ function App() {
         const copy = newTabEntry(project, savedFingerprint, changedAtRef.current)
         setTabId(copy.id)
       }
-      if (startup.fresh) setClosedOffer(recentlyClosed(tabIdRef.current, liveIds, initialProject).filter((entry) => Date.now() - entry.changedAt < OFFER_CLOSED_MS))
+      if (startup.fresh) setClosedOffer(recentlyClosed(tabIdRef.current, liveIds).filter((entry) => Date.now() - entry.changedAt < OFFER_CLOSED_MS))
       pruneEntries(tabIdRef.current)
     })
     return stopAnswering
@@ -164,13 +180,8 @@ function App() {
   // 30 minutes (not in development, which has no version.json).
   useEffect(() => {
     if (import.meta.env.DEV) return
-    const check = async () => {
-      try {
-        const response = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' })
-        const { version } = await response.json() as { version?: string }
-        if (version && version !== __GLPYTHON_IDE_VERSION__) setUpdateAvailable(true)
-      } catch { /* offline: try again later */ }
-    }
+    // Offline: tried again later.
+    const check = async () => { if (await checkForNewVersion() === 'available') setUpdateAvailable(true) }
     const onVisible = () => { if (document.visibilityState === 'visible') void check() }
     document.addEventListener('visibilitychange', onVisible)
     const timer = window.setInterval(() => { void check() }, VERSION_CHECK_MS)
@@ -280,11 +291,12 @@ function App() {
     setSavedFingerprint(projectFingerprint(project))
   }
 
-  // Another project in this tab (opened, imported, or «Neues Projekt»): a new
-  // tab project, so the one before stays among «Zuletzt geschlossen» - unless
-  // it is the untouched starter, which there is nothing to come back to.
+  // Another project in this tab (opened, imported, or «Neues leeres
+  // Projekt»): a new tab project, so the one before stays among «Zuletzt
+  // geschlossen» - unless it is an untouched empty one, which there is nothing
+  // to come back to.
   const switchTabProject = (nextProject: Project, nextSavedFingerprint: string, entry?: TabEntry, nextLibraries: Record<string, string> = {}) => {
-    if (projectFingerprint(project) === STARTER_FINGERPRINT) removeEntry(tabId)
+    if (isEmptyProject(project)) removeEntry(tabId)
     const next = entry ?? newTabEntry(nextProject, nextSavedFingerprint, Date.now(), Object.fromEntries(Object.entries(nextLibraries).map(([path, url]) => [path, { url, status: 'loaded' as const }])))
     if (entry) claimTabId(entry.id)
     changedAtRef.current = next.changedAt
@@ -299,15 +311,15 @@ function App() {
     setLongLinkLength(null)
   }
 
-  // A closed project: in this tab if it holds only the untouched starter,
+  // A closed project: in this tab if it holds only an untouched empty project,
   // else in a new browser tab (`?restore=`, see startTab).
   const openClosedProject = (entry: TabEntry) => {
     setClosedList(null)
-    if (projectFingerprint(project) === STARTER_FINGERPRINT) switchTabProject(entry.project, entry.savedFingerprint, entry)
+    if (isEmptyProject(project)) switchTabProject(entry.project, entry.savedFingerprint, entry)
     else window.open(`/?restore=${encodeURIComponent(entry.id)}`, '_blank', 'noopener')
   }
   const showClosedProjects = () => {
-    void otherLiveTabIds().then((liveIds) => setClosedList(recentlyClosed(tabIdRef.current, liveIds, initialProject)))
+    void otherLiveTabIds().then((liveIds) => setClosedList(recentlyClosed(tabIdRef.current, liveIds)))
   }
   const removeClosedProject = (entry: TabEntry) => {
     removeEntry(entry.id)
@@ -317,6 +329,23 @@ function App() {
   useEffect(() => {
     if (closedList) closedDialogRef.current?.querySelector<HTMLElement>('button')?.focus()
   }, [closedList])
+
+  // ⋮ «Info»: the version (when a learner reports a problem: «Was steht unter
+  // ⋮ → Info?») and the same check as the «Neue Version verfügbar» notice.
+  const versionDate = new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeStyle: 'short' }).format(new Date(__GLPYTHON_IDE_BUILT__))
+  const checkForUpdates = async () => {
+    setInfoCheck('checking')
+    const result = await checkForNewVersion()
+    setInfoCheck(result)
+    if (result === 'available') setUpdateAvailable(true)
+  }
+  const closeInfo = () => {
+    setIsInfoOpen(false)
+    menuButtonRef.current?.focus()
+  }
+  useEffect(() => {
+    if (isInfoOpen) infoDialogRef.current?.querySelector<HTMLElement>('button')?.focus()
+  }, [isInfoOpen])
 
   const openFolder = async () => {
     try {
@@ -355,7 +384,7 @@ function App() {
             {isMenuOpen && <div className="ide-menu-list" role="menu" ref={menuRef} aria-label={t.moreActions} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); closeMenu() } else if (event.key === 'Tab') setIsMenuOpen(false); else moveMenuFocus(event, menuRef.current) }}>
               <button type="button" role="menuitem" onClick={fromMenu(() => setWorkspaceCommand((current) => ({ id: (current?.id ?? 0) + 1, type: 'reset' })))}><RotateCcw size={15} /> {t.restartPython}</button>
               <div className="ide-menu-group" role="group" aria-label={t.projectMenu}>
-              <button type="button" role="menuitem" onClick={fromMenu(() => switchTabProject(initialProject, STARTER_FINGERPRINT))}><FilePlus2 size={15} /> {t.newProject}</button>
+              <button type="button" role="menuitem" onClick={fromMenu(() => switchTabProject(EMPTY_PROJECT, projectFingerprint(EMPTY_PROJECT)))}><FilePlus2 size={15} /> {t.newProject}</button>
               <button type="button" role="menuitem" onClick={fromMenu(showClosedProjects)}><History size={15} /> {t.recentlyClosed}</button>
               <button type="button" role="menuitem" onClick={() => { setIsMenuOpen(false); void openFolder() }}><FolderOpen size={15} /> {t.openFolder}</button>
               <button type="button" role="menuitem" onClick={() => { setIsMenuOpen(false); zipInputRef.current?.click() }}><Upload size={15} /> {t.openProject}</button>
@@ -364,6 +393,9 @@ function App() {
               <div className="ide-menu-group" role="group" aria-label={t.language}>
                 <span className="ide-menu-label" aria-hidden="true">{t.language}</span>
                 {(Object.keys(localeNames) as Locale[]).map((code) => <button type="button" key={code} role="menuitemradio" aria-checked={code === locale} onClick={fromMenu(() => selectLocale(code))}><span className="ide-menu-check" aria-hidden="true" /> {localeNames[code]}</button>)}
+              </div>
+              <div className="ide-menu-group">
+                <button type="button" role="menuitem" onClick={fromMenu(() => { setInfoCheck('idle'); setIsInfoOpen(true) })}><Info size={15} /> {t.about}</button>
               </div>
             </div>}
           </div>
@@ -431,6 +463,20 @@ function App() {
           />
         </main>
       </div>
+      {isInfoOpen && <div className="ide-dialog-backdrop" role="presentation" onClick={closeInfo}>
+        <div className="ide-dialog ide-info" role="dialog" aria-modal="true" aria-labelledby="ide-info-title" ref={infoDialogRef} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); closeInfo() } }}>
+          <div className="ide-dialog-head"><strong id="ide-info-title">glpython</strong><button type="button" className="icon-button small" aria-label={t.dismiss} title={t.dismiss} onClick={closeInfo}><X size={16} /></button></div>
+          <dl className="ide-info-list">
+            <dt>{t.version}</dt><dd><code>{__GLPYTHON_IDE_VERSION__.slice(0, 7)}</code></dd>
+            <dt>{t.built}</dt><dd>{versionDate}</dd>
+          </dl>
+          <div className="ide-info-check">
+            <button type="button" className="secondary-button" onClick={() => { void checkForUpdates() }} disabled={infoCheck === 'checking'}><RotateCcw size={14} /> {t.checkForUpdates}</button>
+            <span role="status">{infoCheck === 'checking' ? t.checkingForUpdates : infoCheck === 'current' ? t.upToDate : infoCheck === 'failed' ? t.updateCheckFailed : ''}</span>
+          </div>
+          {infoCheck === 'available' && <div className="ide-notice" role="status"><span>{t.updateAvailable}</span><button type="button" className="secondary-button" onClick={() => window.location.reload()}><RotateCcw size={14} /> {t.reloadNow}</button></div>}
+        </div>
+      </div>}
       {closedList && <div className="ide-dialog-backdrop" role="presentation" onClick={() => setClosedList(null)}>
         <div className="ide-dialog" role="dialog" aria-modal="true" aria-labelledby="ide-closed-title" ref={closedDialogRef} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); setClosedList(null); menuButtonRef.current?.focus() } }}>
           <div className="ide-dialog-head"><strong id="ide-closed-title">{t.recentlyClosed}</strong><button type="button" className="icon-button small" aria-label={t.dismiss} title={t.dismiss} onClick={() => setClosedList(null)}><X size={16} /></button></div>

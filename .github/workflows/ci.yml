@@ -24,3 +24,8 @@ jobs:
       # tsc -b && vite build
       - run: npm run build
       - run: npm run lint
+      # The IDE in Chrome (on the runner) with Pyodide from its CDN, against
+      # the build above: tab switches with a read-only file, per-tab projects,
+      # share links (libraries by URL, 404, cut and long links), ▶ and Tests,
+      # ⋮ «Info». The «leave the page» question and the iPad stay manual.
+      - run: npm run test:browser

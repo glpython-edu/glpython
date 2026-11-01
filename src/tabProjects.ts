@@ -1,4 +1,4 @@
-import type { Project } from 'glpython-editor'
+import { initialProject, type Project } from 'glpython-editor'
 import type { LibraryState } from './libraries'
 import type { SharedLink } from './projectShare'
 
@@ -26,13 +26,22 @@ export type TabEntry = {
   id: string
   project: Project
   // The project's fingerprint at the last «Teilen» or «Herunterladen» (or
-  // when it was opened from a link, or as the starter): changes since then
-  // are unsaved.
+  // when it was opened from a link, or as an empty project): changes since
+  // then are unsaved.
   savedFingerprint: string
   // The last change to the project.
   changedAt: number
   // Its libraries by URL (path → state), see libraries.ts.
   libraries?: Record<string, LibraryState>
+}
+
+// A fresh tab's project: one empty file to run. Decided by content, not by
+// name (which follows the language at creation), so an untouched one is
+// never offered or listed as closed. Tabs from before November 2026 started
+// with glpython-editor's starter project; untouched, it counts the same.
+export function isEmptyProject(project: Project): boolean {
+  const files = Object.values(project.files)
+  return (files.length === 1 && files[0].path === project.mainFile && files[0].code === '') || projectFingerprint(project) === FORMER_STARTER
 }
 
 // Changes of a project's content (name, the learner's files, file to run), as
@@ -47,6 +56,8 @@ export function projectFingerprint(project: Project): string {
   }
   return `${text.length}:${(hash >>> 0).toString(36)}`
 }
+
+const FORMER_STARTER = projectFingerprint(initialProject)
 
 function newTabId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
@@ -125,10 +136,11 @@ export function claimTabId(id: string): void {
 // The project this tab starts with: a share link's (always a new tab
 // project, its libraries still to fetch), else the one this tab held before
 // (reload, or Safari rebuilding the tab), else - in a tab without one - the
-// IDE's former single project (once) or the starter. `fresh` is true for the
-// starter: only then is another tab's project offered (see recentlyClosed).
-// A link that can't be read gives `empty` and `broken`: never another project.
-export function startTab(link: SharedLink, starter: Project, empty: Project): { entry: TabEntry; fresh: boolean; broken: boolean } {
+// IDE's former single project (once) or `empty` (one empty main.py). `fresh`
+// is true for the empty one: only then is another tab's project offered (see
+// recentlyClosed). A link that can't be read gives `empty` and `broken`:
+// never another project.
+export function startTab(link: SharedLink, empty: Project): { entry: TabEntry; fresh: boolean; broken: boolean } {
   const restoreId = new URLSearchParams(window.location.search).get('restore')
   if (link.status === 'broken') return { entry: newTabEntry(empty, projectFingerprint(empty)), fresh: false, broken: true }
   if (link.status === 'ok') {
@@ -154,10 +166,10 @@ export function startTab(link: SharedLink, starter: Project, empty: Project): { 
     try { localStorage.removeItem(LEGACY_KEY) } catch { /* storage unavailable */ }
     return { entry, fresh: false, broken: false }
   }
-  return { entry: newStarterEntry(starter), fresh: true, broken: false }
+  return { entry: newTabEntry(empty, projectFingerprint(empty)), fresh: true, broken: false }
 }
 
-// A new tab project, held by this tab: the starter, an imported project, or
+// A new tab project, held by this tab: an empty one, an imported project, or
 // a copy (a duplicated tab gets its own). The one this tab held before stays
 // as it is, among «Zuletzt geschlossen».
 export function newTabEntry(project: Project, savedFingerprint: string, changedAt = Date.now(), libraries: Record<string, LibraryState> = {}): TabEntry {
@@ -165,9 +177,6 @@ export function newTabEntry(project: Project, savedFingerprint: string, changedA
   saveEntry(entry)
   claimTabId(entry.id)
   return entry
-}
-function newStarterEntry(starter: Project): TabEntry {
-  return newTabEntry(starter, projectFingerprint(starter))
 }
 
 // The ids the other open tabs hold, asked over a BroadcastChannel: each
@@ -194,10 +203,9 @@ export function otherLiveTabIds(): Promise<Set<string>> {
 }
 
 // The projects no open tab holds, most recently changed first - without
-// untouched starters, which there is nothing to come back to.
-export function recentlyClosed(currentId: string, liveIds: Set<string>, starter: Project): TabEntry[] {
-  const starterFingerprint = projectFingerprint(starter)
+// untouched empty ones, which there is nothing to come back to.
+export function recentlyClosed(currentId: string, liveIds: Set<string>): TabEntry[] {
   return listEntries()
-    .filter((entry) => entry.id !== currentId && !liveIds.has(entry.id) && projectFingerprint(entry.project) !== starterFingerprint)
+    .filter((entry) => entry.id !== currentId && !liveIds.has(entry.id) && !isEmptyProject(entry.project))
     .sort((a, b) => b.changedAt - a.changedAt)
 }

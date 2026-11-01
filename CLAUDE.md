@@ -14,9 +14,10 @@ Sibling repos: `../glpython-editor` (the component, runtime and LiaScript embed;
 npm run dev     # vite with COOP/COEP headers (input() needs SharedArrayBuffer)
 npm run build   # tsc -b && vite build (base /)
 npm run lint    # oxlint; 7 known warnings, all in the vendored public/coi-serviceworker.js
+npm run test:browser  # after a build: scripts/check-ide-browser.mjs, the IDE in headless Chrome
 ```
 
-There are no tests. `.github/workflows/ci.yml` runs `npm ci`, the build (tsc catches type changes in a new editor tag) and lint on every pull request. Pushes to `main` deploy to GitHub Pages (`deploy-pages.yml`). To check a change in the browser, use `npm run dev`; `npm run build && npm run preview` serves the production layout. The embed is a separate project site under the same origin, https://glpython-edu.github.io/glpython-editor/. The IDE's `coi-serviceworker.js` registers for scope `/`, which includes it, so after a change to that worker check the embed too: its demo page opened directly, and a LiaScript course.
+The one automated check is `test:browser` (`scripts/check-ide-browser.mjs`): `playwright-core` drives the installed Chrome (GitHub's runner has one) against `vite preview` of `dist/`, with Pyodide from its CDN and its own fixtures (it serves a library by URL itself). It covers tab switches with a read-only file, per-tab projects, share links (library by URL, 404, cut and long links), ▶ and Tests, and ⋮ «Info»; add regression cases there. The browser's «leave the page» question and the iPad stay manual. `.github/workflows/ci.yml` runs `npm ci`, the build (tsc catches type changes in a new editor tag), lint and `test:browser` on every pull request. Pushes to `main` deploy to GitHub Pages (`deploy-pages.yml`). To check a change in the browser, use `npm run dev`; `npm run build && npm run preview` serves the production layout. The embed is a separate project site under the same origin, https://glpython-edu.github.io/glpython-editor/. The IDE's `coi-serviceworker.js` registers for scope `/`, which includes it, so after a change to that worker check the embed too: its demo page opened directly, and a LiaScript course.
 
 ## Layout
 
