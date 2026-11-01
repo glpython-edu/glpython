@@ -81,18 +81,27 @@ automatically in the browser:
   **Teilen** or **Projekt herunterladen** brings the browser's own question
   (desktop browsers; iPad Safari never asks).
 - A closed tab's project is kept for 14 days: ⋮ **Zuletzt geschlossen** lists
-  them («Öffnen» in this tab if it holds only the untouched starter, else in a
+  them («Öffnen» in this tab if it holds only an untouched empty project, else in a
   new tab; «Entfernen»). A new tab offers the last one changed within a day
   right away («Zuletzt bearbeitet: auswerter.py (vor 2 Stunden).» · «Öffnen»),
   since after quitting Safari or restarting the iPad a tab comes back empty.
-- ⋮ **Neues Projekt** gives the tab the starter; opening a folder or a ZIP
-  gives it that project. The one before goes to «Zuletzt geschlossen».
+- A new tab starts with **one empty `main.py`**; the editor's placeholder
+  («Code hier eingeben») says what to do. Learners arrive by links, and the
+  IDE needs one file to run. An untouched empty project counts as saved and
+  never appears under «Zuletzt geschlossen».
+- ⋮ **Neues leeres Projekt** gives the tab that empty project; opening a
+  folder or a ZIP gives it that project. The one before goes to «Zuletzt
+  geschlossen».
 - The one project the IDE kept before per-tab projects becomes the first
   tab's project, once.
 - A tab that stays open notices a newer IDE version (`version.json`, written
   by the build, checked when the tab comes back into view and every 30
   minutes): «Neue Version verfügbar.» · «Neu laden». The code survives the
   reload; Python's session doesn't.
+- ⋮ **Info** shows the version - the short commit and the build date, as in
+  `version.json` - and **Nach Updates suchen** runs the same check: «Diese
+  Version ist aktuell.», or the notice with «Neu laden». When a learner reports
+  a problem, it tells whether their browser still runs an old version.
 
 The ⋮ menu and the bar support:
 

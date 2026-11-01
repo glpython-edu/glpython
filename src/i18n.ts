@@ -30,6 +30,13 @@ type ShellStrings = {
   deleteFile: (path: string) => string
   pythonReference: string
   newProject: string
+  about: string
+  version: string
+  built: string
+  checkForUpdates: string
+  checkingForUpdates: string
+  upToDate: string
+  updateCheckFailed: string
   recentlyClosed: string
   recentlyClosedHint: string
   recentlyClosedEmpty: string
@@ -89,7 +96,14 @@ export const translations: Record<Locale, Translation> = {
     renameFile: (path) => `Rename ${path}`,
     deleteFile: (path) => `Delete ${path}`,
     pythonReference: 'Python reference',
-    newProject: 'New project',
+    newProject: 'New empty project',
+    about: 'About',
+    version: 'Version',
+    built: 'Built',
+    checkForUpdates: 'Check for updates',
+    checkingForUpdates: 'Checking …',
+    upToDate: 'This version is up to date.',
+    updateCheckFailed: 'Could not check for a new version (no connection?).',
     recentlyClosed: 'Recently closed',
     recentlyClosedHint: 'Projects of closed tabs, kept in this browser for 14 days.',
     recentlyClosedEmpty: 'No projects closed in the last 14 days.',
@@ -145,7 +159,14 @@ export const translations: Record<Locale, Translation> = {
     renameFile: (path) => `${path} umbenennen`,
     deleteFile: (path) => `${path} löschen`,
     pythonReference: 'Python-Referenz',
-    newProject: 'Neues Projekt',
+    newProject: 'Neues leeres Projekt',
+    about: 'Info',
+    version: 'Version',
+    built: 'Erstellt',
+    checkForUpdates: 'Nach Updates suchen',
+    checkingForUpdates: 'Wird geprüft …',
+    upToDate: 'Diese Version ist aktuell.',
+    updateCheckFailed: 'Die Prüfung auf eine neue Version ist fehlgeschlagen (keine Verbindung?).',
     recentlyClosed: 'Zuletzt geschlossen',
     recentlyClosedHint: 'Projekte aus geschlossenen Tabs, 14 Tage lang in diesem Browser gespeichert.',
     recentlyClosedEmpty: 'Keine geschlossenen Projekte aus den letzten 14 Tagen.',
