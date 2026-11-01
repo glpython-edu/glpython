@@ -105,11 +105,24 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
 
-  await check('fresh tab: one empty main.py', async () => {
+  await check('fresh tab: one empty main.py; the former starter isn\'t offered', async () => {
     const context = await newContext()
+    // A tab from before: glpython-editor's untouched starter project.
+    await context.addInitScript(() => {
+      if (localStorage.getItem('glpython-tab-project:alt')) return
+      const code = '# main.py is the project entry point\nfrom gturtle import *\nfrom greetings import welcome\n\nprint(welcome("Python learner"))\n\nmakeTurtle()\nfor _ in range(4):\n    forward(100)\n    right(90)'
+      const project = { id: 'first-steps', name: 'First steps', mainFile: 'main.py', files: {
+        'main.py': { path: 'main.py', label: 'Main program', kind: 'python', code },
+        'greetings.py': { path: 'greetings.py', label: 'Greetings helper', kind: 'python', code: 'def welcome(name):\n    return f"Hello, {name}!"' },
+        'notes.md': { path: 'notes.md', label: 'Lesson notes', kind: 'text', code: '# Variables and output\n\nUse print() to show a value.\nStore reusable values in variables.' },
+      } }
+      localStorage.setItem('glpython-tab-project:alt', JSON.stringify({ id: 'alt', project, savedFingerprint: '', changedAt: Date.now() }))
+    })
     const page = await open(context, base)
     assert.deepEqual(await tabs(page), ['main.py'])
     assert.equal(await editorText(page), '')
+    await page.waitForTimeout(500)
+    assert.deepEqual(await notices(page), [], 'no offer of the former starter')
     await context.close()
   })
 

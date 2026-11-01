@@ -1,4 +1,4 @@
-import type { Project } from 'glpython-editor'
+import { initialProject, type Project } from 'glpython-editor'
 import type { LibraryState } from './libraries'
 import type { SharedLink } from './projectShare'
 
@@ -37,10 +37,11 @@ export type TabEntry = {
 
 // A fresh tab's project: one empty file to run. Decided by content, not by
 // name (which follows the language at creation), so an untouched one is
-// never offered or listed as closed.
+// never offered or listed as closed. Tabs from before November 2026 started
+// with glpython-editor's starter project; untouched, it counts the same.
 export function isEmptyProject(project: Project): boolean {
   const files = Object.values(project.files)
-  return files.length === 1 && files[0].path === project.mainFile && files[0].code === ''
+  return (files.length === 1 && files[0].path === project.mainFile && files[0].code === '') || projectFingerprint(project) === FORMER_STARTER
 }
 
 // Changes of a project's content (name, the learner's files, file to run), as
@@ -55,6 +56,8 @@ export function projectFingerprint(project: Project): string {
   }
   return `${text.length}:${(hash >>> 0).toString(36)}`
 }
+
+const FORMER_STARTER = projectFingerprint(initialProject)
 
 function newTabId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
