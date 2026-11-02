@@ -7,7 +7,9 @@
 //   closed tab's project offered again;
 // - share links: a library by URL (served here), a library that gives 404,
 //   a link cut at 2,083 characters, the note for a long link;
-// - ▶ and «Tests» on a project of two files; ⋮ «Info» and its update check.
+// - ▶ and «Tests» on a project of two files; ⋮ «Info» and its update check;
+// - input() in the console's input line: ▶, a recursive REPL called in the
+//   REPL, Stop → EOFError.
 // The browser's «leave the page» question and the iPad cases stay manual:
 // headless Chrome can't confirm them.
 //
@@ -51,6 +53,8 @@ const link = (files, mainFile, version = 1) => {
 const helfer = 'def doppelt(x):\n    return 2 * x\n'
 const main = 'from helfer import doppelt\n\n\ndef viermal(x):\n    """\n    >>> viermal(2)\n    8\n    """\n    return doppelt(doppelt(x))\n\n\nprint(viermal(21))\n'
 const twoFiles = link([file('helfer.py', helfer), file('main.py', main)], 'main.py')
+const greeting = link([file('main.py', 'name = input("Name: ")\nprint("Hallo", name)\n')], 'main.py')
+const language = link([file('main.py', 'def berechnen(text):\n    return eval(text)\n\ndef repl():\n    text = input("> ")\n    if text == "ende":\n        return\n    print(berechnen(text))\n    repl()\n')], 'main.py')
 const withReadOnly = link([file('bib.py', library, { readOnly: true }), file('main.py', 'from bib import gross\nprint(gross("hallo"))\n')], 'main.py')
 const byUrl = (url) => link([{ path: 'bib.py', url, readOnly: true }, file('main.py', 'from bib import gross\nprint(gross("hallo"))\n')], 'main.py', 2)
 // A file that compresses badly, for a link longer than 2,083 characters.
@@ -225,6 +229,65 @@ try {
     await page.getByRole('button', { name: 'Tests', exact: true }).click()
     await page.locator('.test-summary').waitFor({ timeout: 60000 })
     assert.equal(await page.locator('.test-summary').innerText(), '1 von 1 Beispielen bestanden')
+    await context.close()
+  })
+
+  // input(): the console's >>> line becomes the program's input line, with
+  // the prompt in front; prompt and answer stay in the transcript.
+  const programLine = (page) => page.locator('.repl-line--program .repl-input')
+  const answer = async (page, text, prompt) => {
+    await programLine(page).waitFor({ timeout: 60000 })
+    assert.equal(await page.locator('.repl-line--program .repl-prompt').textContent(), prompt)
+    assert.ok(await programLine(page).evaluate((element) => element === document.activeElement), 'the input line has the focus')
+    await programLine(page).fill(text)
+    await programLine(page).press('Enter')
+  }
+  // A REPL input, once the REPL is free again (until then it keeps the text).
+  const enterRepl = async (page, text) => {
+    const line = page.locator('.repl-line .repl-input')
+    await page.getByRole('textbox', { name: 'Python-Eingabe' }).fill(text)
+    for (let attempt = 0; attempt < 100 && await line.inputValue() === text; attempt++) {
+      await line.press('Enter')
+      await page.waitForTimeout(100)
+    }
+  }
+  const replBack = (page) => page.locator('.repl-line:not(.repl-line--program)').waitFor({ timeout: 60000 })
+
+  await check('input(): ▶ asks in the console, no dialog', async () => {
+    const context = await newContext()
+    const page = await open(context, greeting)
+    await pythonReady(page)
+    await page.getByRole('button', { name: 'Ausführen' }).click()
+    await answer(page, 'Zoë', 'Name: ')
+    assert.equal(await page.locator('.input-dialog').count(), 0)
+    await page.waitForFunction(() => document.querySelector('.console')?.textContent.includes('Hallo Zoë'), null, { timeout: 60000 })
+    assert.match(await consoleText(page), /Name: Zoë\nHallo Zoë/)
+    await context.close()
+  })
+
+  await check('input(): a recursive REPL called in the REPL, then Stop → EOFError', async () => {
+    const context = await newContext()
+    const page = await open(context, language)
+    await pythonReady(page)
+    await page.getByRole('button', { name: 'Ausführen' }).click()
+    await page.locator('.console').getByText('(Keine Ausgabe)').waitFor({ timeout: 60000 })
+    await enterRepl(page, 'repl()')
+    await answer(page, '1 + 2', '> ')
+    await answer(page, '2 * (3 + 4)', '> ')
+    await answer(page, 'ende', '> ')
+    await replBack(page)
+    assert.match(await consoleText(page), />>> repl\(\)\n(Visualisieren\n)?> 1 \+ 2\n3\n> 2 \* \(3 \+ 4\)\n14\n> ende/)
+    // Stop while it waits: EOFError, and the session stays (no restart).
+    await enterRepl(page, 'repl()')
+    await answer(page, '6 * 7', '> ')
+    await programLine(page).waitFor({ timeout: 60000 })
+    await page.getByRole('button', { name: 'Stop' }).click()
+    await page.locator('.console').getByText('EOFError: EOF when reading a line').waitFor({ timeout: 60000 })
+    const text = await consoleText(page)
+    assert.match(text, /> 6 \* 7\n42\n> \n[\s\S]*EOFError: EOF when reading a line/)
+    assert.doesNotMatch(text, /neu gestartet/)
+    await enterRepl(page, 'berechnen("2 ** 10")')
+    await page.locator('.console').getByText('1024').waitFor({ timeout: 60000 })
     await context.close()
   })
 
