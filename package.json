@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@azure/msal-browser": "^5.22.0",
-    "glpython-editor": "git+https://github.com/glpython-edu/glpython-editor.git#v0.1.21",
+    "glpython-editor": "git+https://github.com/glpython-edu/glpython-editor.git#v0.1.22",
     "jszip": "^3.10.2",
     "lucide-react": "^1.47.0",
     "lz-string": "^1.5.0",
