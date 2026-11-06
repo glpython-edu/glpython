@@ -50,6 +50,8 @@ type ShellStrings = {
   longLink: (length: number) => string
   downloadForHandIn: string
   libraries: string
+  // Files by URL that aren't Python (e.g. a task's instructions), in the drawer.
+  readingFiles: string
   librarySource: (host: string) => string
   libraryLoading: string
   libraryFailed: (name: string, reason: string) => string
@@ -117,6 +119,7 @@ export const translations: Record<Locale, Translation> = {
     longLink: (length) => `This link is very long (${length} characters). Some programs, e.g. OneNote, shorten such links. For a hand-in, download the project instead.`,
     downloadForHandIn: 'Download',
     libraries: 'Libraries',
+    readingFiles: 'To read',
     librarySource: (host) => `from ${host}`,
     libraryLoading: 'loading …',
     libraryFailed: (name, reason) => `Could not load library ${name} (${reason}).`,
@@ -180,6 +183,7 @@ export const translations: Record<Locale, Translation> = {
     longLink: (length) => `Dieser Link ist sehr lang (${length} Zeichen). Manche Programme, z. B. OneNote, kürzen solche Links. Für eine Abgabe das Projekt besser herunterladen.`,
     downloadForHandIn: 'Herunterladen',
     libraries: 'Bibliotheken',
+    readingFiles: 'Zum Lesen',
     librarySource: (host) => `von ${host}`,
     libraryLoading: 'wird geladen …',
     libraryFailed: (name, reason) => `Die Bibliothek ${name} konnte nicht geladen werden (${reason}).`,

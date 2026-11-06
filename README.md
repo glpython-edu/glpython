@@ -110,12 +110,44 @@ The ⋮ menu and the bar support:
 - **Projekt herunterladen** as a ZIP with all project files and `glpython.json`
   metadata
 - **Teilen**, which serializes the entire project structure (files, contents,
-  and metadata) into a compressed link (`?project=`, or `#project=` beyond
-  GitHub Pages' URL limit) so a project can be shared or reopened without a
-  server, similar to
+  and metadata) into a compressed link (`?p=`, or `#p=` beyond GitHub Pages'
+  URL limit; see «The link format» below) so a project can be shared or
+  reopened without a server, similar to
   [webtigerpython.ethz.ch](https://webtigerpython.ethz.ch/). A link longer
   than 2,083 characters (OneNote cuts links there) is still copied, with a
   note to download the project for a hand-in and a **Herunterladen** button.
+
+**The link format.** A share link carries the project as JSON (the payload
+below: `v`, `name`, `mainFile`, optional `openFile`, `files` in tab order),
+in one of two encodings:
+- **`?p=`** (written since P46): the JSON's UTF-8 bytes compressed with **raw
+  deflate** (RFC 1951: no zlib or gzip header or checksum; the IDE uses
+  [fflate](https://github.com/101arrowz/fflate) at level 9, Node's
+  `zlib.deflateRawSync(bytes, { level: 9 })` is equally right), written in
+  **base64url** (RFC 4648 §5, alphabet `A–Z a–z 0–9 - _`) **without `=`
+  padding**. Any raw deflate stream reads, whichever encoder wrote it. About
+  40 % shorter than `?project=` for a program: a hand-in of 1,980 characters
+  becomes 1,185.
+- **`?project=`** (before P46): lz-string's `compressToEncodedURIComponent`.
+  The IDE reads it forever, so every link handed in keeps working.
+
+A link longer than 8,192 characters in path and query puts the same value in
+the fragment instead: `#p=…` (or `#project=…`). A test vector: the payload
+
+```json
+{"v":1,"name":"Test","mainFile":"main.py","files":{"main.py":{"path":"main.py","label":"main","kind":"python","code":"print(\"Grüezi\")\n"}}}
+```
+
+(exactly these bytes, as `JSON.stringify` writes them) gives, with
+`zlib.deflateRawSync(Buffer.from(json, 'utf8'), { level: 9 }).toString('base64url')`,
+
+```text
+VcxBCoMwFATQu8yqQhDc_gO0F3CZTVq_-DF-gwbBhtysOy9WAiK4m3kMk7CBGgN1E4PQ8hphMDnRp_giJdZhh0EvnldQuogSgovDbeTdm_0pMBhFOxDCHoe59M_cldOwiMaHxWs5fvwVi8oqcs5_
+```
+
+so `https://glpython-edu.github.io/?p=VcxBCoMw…` opens it (`test:browser`
+checks this). The IDE's own encoder may write other bytes for the same
+payload; both open.
 
 **Libraries by URL.** A share link (version 2) can name a library by its URL
 instead of carrying its code, e.g. a course's `parser.py`:
@@ -124,7 +156,8 @@ IDE fetches it once when the link opens (https only, or http on localhost; at
 most 1 MB; without cookies; the server must send CORS headers, as GitHub
 Pages and raw.githubusercontent.com do) and keeps the text with the tab's
 project, so a reload or working offline uses that copy. The file drawer lists
-it under **Bibliotheken** with its host and a lock. If it can't be loaded
+it with its host and a lock: a Python file under **Bibliotheken**, any
+other file (e.g. a task's instructions) under **Zum Lesen**. If it can't be loaded
 (e.g. HTTP 404, no network, no CORS), the drawer and a notice say so
 («Die Bibliothek parser.py konnte nicht geladen werden (HTTP 404).») with
 **Erneut versuchen**; importing it then raises Python's own
@@ -179,7 +212,7 @@ a new file comes last. For example:
 }
 ```
 
-as `?project=` + `LZString.compressToEncodedURIComponent(JSON.stringify(…))`.
+in either encoding of «The link format» above.
 A Markdown file can also carry its code (`"kind": "text", "code": "…"`,
 `"readOnly": true`); then it is open at once.
 
