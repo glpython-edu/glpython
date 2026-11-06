@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { BookOpen, CircleHelp, Download, Info, EllipsisVertical, SlidersHorizontal, FileCode2, FilePlus2, Folder, FolderOpen, History, Link2, Lock, Pencil, Plus, RotateCcw, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { BookOpen, CircleHelp, Download, Info, EllipsisVertical, SlidersHorizontal, FileCode2, FilePlus2, Folder, FolderOpen, History, Link2, Lock, Pencil, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react'
 import { GlPythonWorkspace, addProjectFile, deleteProjectFile, renameProjectFile, updateProjectFile } from 'glpython-editor'
 import type { Project, ProjectFileKind, WorkspaceCommand } from 'glpython-editor'
 import 'glpython-editor/style.css'
@@ -8,6 +8,7 @@ import { exportProjectZip, importProjectFolder, importProjectZip } from './proje
 import { buildShareUrl, readSharedLinkFromLocation } from './projectShare'
 import { fetchLibrary, libraryHost, type LibraryState } from './libraries'
 import { renderMarkdown } from './markdown'
+import { GlpythonMark } from './GlpythonMark'
 import { capabilitiesOf, DEFAULT_FEATURES, FEATURE_NAMES, readFeaturesParam, type Feature } from './features'
 import { answerTabQueries, claimTabId, isEmptyProject, newTabEntry, otherLiveTabIds, projectFingerprint, pruneEntries, recentlyClosed, removeEntry, saveEntry, startTab, type TabEntry } from './tabProjects'
 import { detectLocale, localeNames, saveLocale, translations, type Locale } from './i18n'
@@ -423,7 +424,7 @@ function App() {
   return (
     <div className="ide">
       <header className="ide-bar">
-        <div className="ide-brand"><span className="ide-brand-mark" aria-hidden="true"><Sparkles size={16} /></span><span>glpython</span></div>
+        <div className="ide-brand"><span className="ide-brand-mark" aria-hidden="true"><GlpythonMark size={22} /></span><span>glpython</span></div>
         <div className="ide-actions" ref={setActionsContainer} />
         <div className="ide-bar-end">
           {shareCopied && <span className="ide-share-status" role="status">{t.shareCopied}</span>}
