@@ -7,6 +7,7 @@ import { initializeAuth } from './auth'
 import { exportProjectZip, importProjectFolder, importProjectZip } from './projectStorage'
 import { buildShareUrl, readSharedLinkFromLocation } from './projectShare'
 import { fetchLibrary, libraryHost, type LibraryState } from './libraries'
+import { renderMarkdown } from './markdown'
 import { answerTabQueries, claimTabId, isEmptyProject, newTabEntry, otherLiveTabIds, projectFingerprint, pruneEntries, recentlyClosed, removeEntry, saveEntry, startTab, type TabEntry } from './tabProjects'
 import { detectLocale, localeNames, saveLocale, translations, type Locale } from './i18n'
 
@@ -76,7 +77,12 @@ function App() {
   const [locale, setLocale] = useState<Locale>(() => detectLocale())
   const t = translations[locale]
   const [project, setProject] = useState(() => startup.entry.project)
-  const [activeFile, setActiveFile] = useState(() => startup.entry.project.mainFile)
+  // The tab open at the start: the link's `openFile` (e.g. a task's
+  // instructions), else the file that runs. A library by URL is a file
+  // only once fetched: until then, the file that runs.
+  const [activeFile, setActiveFile] = useState(() => startup.entry.openFile && startup.entry.project.files[startup.entry.openFile] ? startup.entry.openFile : startup.entry.project.mainFile)
+  // That `openFile`, kept with the tab's project and in its «Teilen» links.
+  const [openFile, setOpenFile] = useState(startup.entry.openFile)
   // This tab's project (tabProjects.ts): its id, and its fingerprint at the
   // last «Teilen»/«Herunterladen» - changes since then are unsaved, and the
   // browser asks before the tab is closed or reloaded.
@@ -125,8 +131,8 @@ function App() {
     if (fingerprint !== lastFingerprintRef.current) changedAtRef.current = Date.now()
     lastFingerprintRef.current = fingerprint
     unsavedRef.current = fingerprint !== savedFingerprint
-    saveEntry({ id: tabId, project, savedFingerprint, changedAt: changedAtRef.current, libraries })
-  }, [project, savedFingerprint, tabId, libraries])
+    saveEntry({ id: tabId, project, savedFingerprint, changedAt: changedAtRef.current, libraries, ...(openFile && project.files[openFile] ? { openFile } : {}) })
+  }, [project, savedFingerprint, tabId, libraries, openFile])
 
   // Libraries still to fetch: once, when the link opened (and again after
   // «Erneut versuchen»); fetched, a library is a read-only file of the project.
@@ -153,7 +159,7 @@ function App() {
     const stopAnswering = answerTabQueries(() => tabIdRef.current)
     void otherLiveTabIds().then((liveIds) => {
       if (liveIds.has(tabIdRef.current)) {
-        const copy = newTabEntry(project, savedFingerprint, changedAtRef.current)
+        const copy = newTabEntry(project, savedFingerprint, changedAtRef.current, libraries, openFile)
         setTabId(copy.id)
       }
       if (startup.fresh) setClosedOffer(recentlyClosed(tabIdRef.current, liveIds).filter((entry) => Date.now() - entry.changedAt < OFFER_CLOSED_MS))
@@ -256,6 +262,7 @@ function App() {
     if (!requestedPath || requestedPath === path || project.files[requestedPath]) return
     setProject((currentProject) => renameProjectFile(currentProject, path, requestedPath))
     if (activeFile === path) setActiveFile(requestedPath)
+    if (openFile === path) setOpenFile(requestedPath)
   }
 
   const deleteFile = (path: string) => {
@@ -263,10 +270,11 @@ function App() {
     const remainingPaths = Object.keys(project.files).filter((filePath) => filePath !== path)
     setProject((currentProject) => deleteProjectFile(currentProject, path))
     if (activeFile === path) setActiveFile(remainingPaths[0])
+    if (openFile === path) setOpenFile(undefined)
   }
 
   const downloadProject = async () => {
-    const blob = await exportProjectZip(project, libraryUrls)
+    const blob = await exportProjectZip(project, libraryUrls, openFile)
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -279,7 +287,7 @@ function App() {
   // Teilen: the link to a copy of this project, copied with a short
   // confirmation beside the button, or shown to copy by hand.
   const shareProject = async () => {
-    const shareUrl = buildShareUrl(project, libraryUrls)
+    const shareUrl = buildShareUrl(project, libraryUrls, openFile)
     setLongLinkLength(shareUrl.length > LONG_LINK ? shareUrl.length : null)
     try {
       await navigator.clipboard.writeText(shareUrl)
@@ -295,16 +303,17 @@ function App() {
   // Projekt»): a new tab project, so the one before stays among «Zuletzt
   // geschlossen» - unless it is an untouched empty one, which there is nothing
   // to come back to.
-  const switchTabProject = (nextProject: Project, nextSavedFingerprint: string, entry?: TabEntry, nextLibraries: Record<string, string> = {}) => {
+  const switchTabProject = (nextProject: Project, nextSavedFingerprint: string, entry?: TabEntry, nextLibraries: Record<string, string> = {}, nextOpenFile?: string) => {
     if (isEmptyProject(project)) removeEntry(tabId)
-    const next = entry ?? newTabEntry(nextProject, nextSavedFingerprint, Date.now(), Object.fromEntries(Object.entries(nextLibraries).map(([path, url]) => [path, { url, status: 'loaded' as const }])))
+    const next = entry ?? newTabEntry(nextProject, nextSavedFingerprint, Date.now(), Object.fromEntries(Object.entries(nextLibraries).map(([path, url]) => [path, { url, status: 'loaded' as const }])), nextOpenFile)
     if (entry) claimTabId(entry.id)
     changedAtRef.current = next.changedAt
     lastFingerprintRef.current = projectFingerprint(next.project)
     setTabId(next.id)
     setSavedFingerprint(next.savedFingerprint)
     setProject(next.project)
-    setActiveFile(next.project.mainFile)
+    setActiveFile(next.openFile && next.project.files[next.openFile] ? next.openFile : next.project.mainFile)
+    setOpenFile(next.openFile)
     setLibraries(next.libraries ?? {})
     setClosedOffer([])
     setBrokenLink(false)
@@ -354,7 +363,7 @@ function App() {
         zipInputRef.current?.click()
         return
       }
-      switchTabProject(importedProject.project, projectFingerprint(importedProject.project), undefined, importedProject.libraries)
+      switchTabProject(importedProject.project, projectFingerprint(importedProject.project), undefined, importedProject.libraries, importedProject.openFile)
     } catch {
       // Folder picker not supported or cancelled - importProjectFolder already
       // falls back to the hidden zip <input> above when appropriate.
@@ -363,7 +372,7 @@ function App() {
 
   const openZip = async (file: File) => {
     const importedProject = await importProjectZip(file, project)
-    switchTabProject(importedProject.project, projectFingerprint(importedProject.project), undefined, importedProject.libraries)
+    switchTabProject(importedProject.project, projectFingerprint(importedProject.project), undefined, importedProject.libraries, importedProject.openFile)
   }
 
   const authErrorMessage = authErrorKey === 'init' ? t.authInitError : authErrorKey === 'config' ? t.authConfigError : authErrorKey === 'cancelled' ? t.authCancelledError : ''
@@ -459,6 +468,7 @@ function App() {
             actionsContainer={actionsContainer}
             command={workspaceCommand}
             capabilities={{ breadcrumbs: false, closeFileTabs: false, resetOutput: false, coverage: true }}
+            renderMarkdown={renderMarkdown}
             t={t}
           />
         </main>

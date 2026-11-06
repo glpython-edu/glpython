@@ -146,6 +146,36 @@ lock: it can be read, run and imported, but not edited, renamed or deleted -
 e.g. a parser that learners use as a black box. This local format is also the shape planned for OneDrive
 folder synchronization.
 
+**A task's instructions as a tab.** A share link can name the tab that is
+open when the project opens: `"openFile": "aufgabe.md"` next to `mainFile`
+(any version; one that isn't among the files is ignored, and an IDE from
+before opens the link as it did). ▶, **Tests** and **Visualisieren** always
+act on `mainFile`, whichever tab is open. A Markdown file (`.md`) has a switch
+**Ansicht / Text** at the end of the tabs: a read-only one opens as a page, an
+editable one as its text. The page is rendered with
+[marked](https://marked.js.org/) and sanitized with
+[DOMPurify](https://github.com/cure53/DOMPurify) (both pinned): HTML written
+in the Markdown shows as text, scripts, event attributes and `javascript:`
+links are removed, links open in a new tab, code is only shown. The tab's
+project, **Teilen**, a reload and the ZIP (`"openFile"` in `glpython.json`)
+keep `openFile`. For example:
+
+```json
+{
+  "v": 2,
+  "name": "Aufgabe 1",
+  "mainFile": "auswerter.py",
+  "openFile": "aufgabe.md",
+  "files": {
+    "auswerter.py": { "path": "auswerter.py", "label": "auswerter", "kind": "python", "code": "…" },
+    "parser.py": { "path": "parser.py", "url": "https://…/parser.py", "readOnly": true },
+    "aufgabe.md": { "path": "aufgabe.md", "label": "aufgabe", "kind": "text", "code": "# Aufgabe 1\n…", "readOnly": true }
+  }
+}
+```
+
+as `?project=` + `LZString.compressToEncodedURIComponent(JSON.stringify(…))`.
+
 ## Microsoft sign-in
 
 Copy `.env.example` to `.env.local` and set the client ID from a Microsoft

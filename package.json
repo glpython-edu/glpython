@@ -13,10 +13,12 @@
   },
   "dependencies": {
     "@azure/msal-browser": "^5.22.0",
-    "glpython-editor": "git+https://github.com/glpython-edu/glpython-editor.git#v0.1.27",
+    "dompurify": "3.4.17",
+    "glpython-editor": "git+https://github.com/glpython-edu/glpython-editor.git#0df7e82ca24445998896ea0033b11bef54cba3c9",
     "jszip": "^3.10.2",
     "lucide-react": "^1.47.0",
     "lz-string": "^1.5.0",
+    "marked": "18.1.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
