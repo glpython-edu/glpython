@@ -37,6 +37,8 @@ type ShellStrings = {
   featureLabels: Record<'run' | 'tests' | 'visualize' | 'repl' | 'export' | 'coverage' | 'listtree' | 'tree', string>
   version: string
   built: string
+  // The bundled glpython-editor's version in ⋮ «Info».
+  editorVersion: string
   checkForUpdates: string
   checkingForUpdates: string
   upToDate: string
@@ -118,6 +120,7 @@ export const translations: Record<Locale, Translation> = {
     },
     version: 'Version',
     built: 'Built',
+    editorVersion: 'Editor',
     checkForUpdates: 'Check for updates',
     checkingForUpdates: 'Checking …',
     upToDate: 'This version is up to date.',
@@ -194,6 +197,7 @@ export const translations: Record<Locale, Translation> = {
     },
     version: 'Version',
     built: 'Erstellt',
+    editorVersion: 'Editor',
     checkForUpdates: 'Nach Updates suchen',
     checkingForUpdates: 'Wird geprüft …',
     upToDate: 'Diese Version ist aktuell.',

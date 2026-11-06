@@ -98,7 +98,8 @@ automatically in the browser:
   by the build, checked when the tab comes back into view and every 30
   minutes): «Neue Version verfügbar.» · «Neu laden». The code survives the
   reload; Python's session doesn't.
-- ⋮ **Info** shows the version - the short commit and the build date, as in
+- ⋮ **Info** shows the version - the short commit, the bundled glpython-editor's
+  tag (from `package.json`) and the build date, as in
   `version.json` - and **Nach Updates suchen** runs the same check: «Diese
   Version ist aktuell.», or the notice with «Neu laden». When a learner reports
   a problem, it tells whether their browser still runs an old version.

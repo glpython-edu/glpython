@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 
@@ -9,6 +10,13 @@ const version = process.env.GITHUB_SHA ?? (() => {
   try { return execSync('git rev-parse HEAD').toString().trim() } catch { return 'dev' }
 })()
 const built = new Date().toISOString()
+// The glpython-editor it bundles, as package.json pins it: the tag
+// ("…glpython-editor.git#v0.1.30"), or a commit's first 7 characters.
+const editorVersion = (() => {
+  const spec = (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { dependencies?: Record<string, string> }).dependencies?.['glpython-editor'] ?? ''
+  const ref = spec.split('#')[1] ?? ''
+  return /^[0-9a-f]{40}$/.test(ref) ? ref.slice(0, 7) : ref || 'unknown'
+})()
 const versionFile: Plugin = {
   name: 'glpython-version-file',
   apply: 'build',
@@ -33,6 +41,7 @@ export default defineConfig({
   define: {
     __GLPYTHON_IDE_VERSION__: JSON.stringify(version),
     __GLPYTHON_IDE_BUILT__: JSON.stringify(built),
+    __GLPYTHON_EDITOR_VERSION__: JSON.stringify(editorVersion),
   },
   // glpython-editor's Pyodide worker is loaded via
   // `new Worker(new URL('./pyodide-worker.js', import.meta.url))`, resolved
