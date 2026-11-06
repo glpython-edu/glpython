@@ -1,3 +1,4 @@
+import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate'
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string'
 import type { Project, ProjectFile } from 'glpython-editor'
 
@@ -17,7 +18,22 @@ import type { Project, ProjectFile } from 'glpython-editor'
 // page); ▶ still runs `mainFile`. One that isn't in the project is ignored;
 // an IDE from before reads the link as it did. A file with its code can be
 // `readOnly: true` too.
+//
+// Two encodings of the same JSON payload (P46):
+// - `?p=` (written since P46): the payload's UTF-8 bytes compressed with raw
+//   deflate (RFC 1951, no zlib or gzip header; fflate's deflateSync, level 9),
+//   in base64url (RFC 4648 §5: A-Z a-z 0-9 - _) without "=" padding. About a
+//   third shorter than lz-string for a program. Any raw deflate stream reads,
+//   e.g. Node's zlib.deflateRawSync.
+// - `?project=` (before P46): lz-string's compressToEncodedURIComponent.
+//   Read forever: every link handed in must keep working.
+// fflate works synchronously, so «Teilen» builds the link and copies it in
+// the tap's own handler, as iPad Safari requires for the clipboard.
+const COMPACT_PARAM = 'p'
 const SHARE_PARAM = 'project'
+// A link's payload inflates to at most this many bytes (a short link can't
+// expand into a page-freezing amount).
+const MAX_PAYLOAD_BYTES = 8_000_000
 // GitHub Pages answers "414 URI Too Long" when a request's path and query
 // exceed 8192 characters - a program of roughly 5,000 to 30,000 characters,
 // depending on how well it compresses. A longer link carries the project in
@@ -68,20 +84,49 @@ function isSharedProjectPayload(value: unknown): value is SharedProjectPayload {
 // link as URLs, not as their code.
 // `openFile`: the tab to open with (only if it is one of the project's);
 // `order`: the order of the tabs (files not in it follow).
-export function encodeProjectForUrl(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = []): string {
+function payloadOf(project: Project, libraries: Record<string, string>, openFile: string | undefined, order: string[]): SharedProjectPayload {
   const files: Record<string, ProjectFile | LibraryReference> = {}
   const paths = [...new Set([...order, ...Object.keys(project.files), ...Object.keys(libraries)])]
   for (const path of paths) {
     if (libraries[path]) files[path] = { path, url: libraries[path], readOnly: true }
     else if (project.files[path]) files[path] = project.files[path]
   }
-  const payload: SharedProjectPayload = { v: Object.keys(libraries).length > 0 ? 2 : 1, name: project.name, mainFile: project.mainFile, ...(openFile && openFile !== project.mainFile && files[openFile] ? { openFile } : {}), files }
-  return compressToEncodedURIComponent(JSON.stringify(payload))
+  return { v: Object.keys(libraries).length > 0 ? 2 : 1, name: project.name, mainFile: project.mainFile, ...(openFile && openFile !== project.mainFile && files[openFile] ? { openFile } : {}), files }
 }
 
-export function decodeProjectFromUrl(encoded: string): SharedLink {
+// The old encoding (`?project=`), for the checks and as a reference.
+export function encodeProjectForUrl(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = []): string {
+  return compressToEncodedURIComponent(JSON.stringify(payloadOf(project, libraries, openFile, order)))
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = ''
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function fromBase64Url(text: string): Uint8Array | null {
+  if (!/^[A-Za-z0-9_-]*$/.test(text) || text.length % 4 === 1) return null
+  const binary = atob(text.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(text.length / 4) * 4, '='))
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0))
+}
+
+// The compact encoding (`?p=`), see above.
+export function encodeProjectCompact(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = []): string {
+  return toBase64Url(deflateSync(strToU8(JSON.stringify(payloadOf(project, libraries, openFile, order))), { level: 9 }))
+}
+
+function inflatePayload(encoded: string): string | null {
+  const bytes = fromBase64Url(encoded)
+  if (!bytes || bytes.length === 0) return null
+  const inflated = inflateSync(bytes)
+  if (inflated.length > MAX_PAYLOAD_BYTES) return null
+  return strFromU8(inflated)
+}
+
+export function decodeProjectFromUrl(encoded: string, compact = false): SharedLink {
   try {
-    const json = decompressFromEncodedURIComponent(encoded)
+    const json = compact ? inflatePayload(encoded) : decompressFromEncodedURIComponent(encoded)
     if (!json) return { status: 'broken' }
     const payload = JSON.parse(json) as unknown
     if (!isSharedProjectPayload(payload) || !isProjectFile(payload.files[payload.mainFile])) return { status: 'broken' }
@@ -107,11 +152,11 @@ export function decodeProjectFromUrl(encoded: string): SharedLink {
 
 export function buildShareUrl(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = []): string {
   const url = new URL(import.meta.env.BASE_URL, window.location.origin)
-  const encoded = encodeProjectForUrl(project, libraries, openFile, order)
-  url.searchParams.set(SHARE_PARAM, encoded)
+  const encoded = encodeProjectCompact(project, libraries, openFile, order)
+  url.searchParams.set(COMPACT_PARAM, encoded)
   if (url.pathname.length + url.search.length <= MAX_PATH_AND_QUERY) return url.toString()
   url.search = ''
-  url.hash = new URLSearchParams({ [SHARE_PARAM]: encoded }).toString()
+  url.hash = new URLSearchParams({ [COMPACT_PARAM]: encoded }).toString()
   return url.toString()
 }
 
@@ -119,8 +164,12 @@ export function buildShareUrl(project: Project, libraries: Record<string, string
 // query or, for a long one, the fragment). The tab then holds it as its own
 // project and leaves the bare start page in the address (claimTabId), so
 // reloading or re-sharing doesn't keep re-importing the same snapshot.
+// Both encodings, in the query and in the fragment.
 export function readSharedLinkFromLocation(): SharedLink {
   const url = new URL(window.location.href)
-  const encoded = url.searchParams.get(SHARE_PARAM) ?? new URLSearchParams(url.hash.slice(1)).get(SHARE_PARAM)
+  const fragment = new URLSearchParams(url.hash.slice(1))
+  const compact = url.searchParams.get(COMPACT_PARAM) ?? fragment.get(COMPACT_PARAM)
+  if (compact !== null) return decodeProjectFromUrl(compact, true)
+  const encoded = url.searchParams.get(SHARE_PARAM) ?? fragment.get(SHARE_PARAM)
   return encoded ? decodeProjectFromUrl(encoded) : { status: 'none' }
 }

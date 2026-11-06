@@ -454,18 +454,23 @@ function App() {
             </li> })}
           </ul>
           <button type="button" className="secondary-button ide-new-file" onClick={addFile}><Plus size={15} /> {t.addFile}</button>
-          {/* Libraries by URL (libraries.ts): read-only, with where they come from. */}
-          {Object.keys(libraries).length > 0 && <div className="ide-libraries">
-            <span className="ide-project-label">{t.libraries}</span>
-            <ul className="ide-file-list">
-              {Object.entries(libraries).map(([path, library]) => <li key={path} className={path === activeFile ? 'active' : undefined}>
-                <button type="button" className="ide-file-open" aria-current={path === activeFile ? 'true' : undefined} disabled={library.status !== 'loaded'} onClick={() => chooseTab(path)}>{/\.py$/i.test(path) ? <FileCode2 size={15} /> : <BookOpen size={15} />}<span className="ide-library-name"><span>{path}</span><small className={library.status === 'failed' ? 'ide-library-failed' : undefined}>{library.status === 'loaded' ? t.librarySource(libraryHost(library.url)) : library.status === 'loading' ? t.libraryLoading : t.libraryFailed(path, library.failure ?? '')}</small></span></button>
-                {library.status === 'failed'
-                  ? <button type="button" className="icon-button small" aria-label={t.retryLibrary(path)} title={t.retryLibrary(path)} onClick={() => retryLibrary(path)}><RotateCcw size={14} /></button>
-                  : <span className="ide-file-read-only" role="img" aria-label={t.readOnlyFile} title={t.readOnlyFile}><Lock size={14} /></span>}
-              </li>)}
-            </ul>
-          </div>}
+          {/* Files by URL (libraries.ts): read-only, with where they come from -
+              Python files as libraries, other files (e.g. a task's instructions)
+              to read. */}
+          {[{ heading: t.libraries, python: true }, { heading: t.readingFiles, python: false }].map(({ heading, python }) => {
+            const group = Object.entries(libraries).filter(([path]) => /\.py$/i.test(path) === python)
+            return group.length > 0 && <div className="ide-libraries" key={heading}>
+              <span className="ide-project-label">{heading}</span>
+              <ul className="ide-file-list">
+                {group.map(([path, library]) => <li key={path} className={path === activeFile ? 'active' : undefined}>
+                  <button type="button" className="ide-file-open" aria-current={path === activeFile ? 'true' : undefined} disabled={library.status !== 'loaded'} onClick={() => chooseTab(path)}>{/\.py$/i.test(path) ? <FileCode2 size={15} /> : <BookOpen size={15} />}<span className="ide-library-name"><span>{path}</span><small className={library.status === 'failed' ? 'ide-library-failed' : undefined}>{library.status === 'loaded' ? t.librarySource(libraryHost(library.url)) : library.status === 'loading' ? t.libraryLoading : t.libraryFailed(path, library.failure ?? '')}</small></span></button>
+                  {library.status === 'failed'
+                    ? <button type="button" className="icon-button small" aria-label={t.retryLibrary(path)} title={t.retryLibrary(path)} onClick={() => retryLibrary(path)}><RotateCcw size={14} /></button>
+                    : <span className="ide-file-read-only" role="img" aria-label={t.readOnlyFile} title={t.readOnlyFile}><Lock size={14} /></span>}
+                </li>)}
+              </ul>
+            </div>
+          })}
         </aside>}
         <main className="ide-main">
           {authErrorMessage && <div className="auth-notice" role="status">{authErrorMessage}</div>}

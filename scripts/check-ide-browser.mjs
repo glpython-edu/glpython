@@ -13,7 +13,10 @@
 // - a task's instructions as a tab (P45): a link's `openFile` and a
 //   read-only aufgabe.md shown as a page («Ansicht / Text»), ▶, «Tests»
 //   and «Visualisieren» on the file that runs, «Teilen» and a reload keep
-//   it; an old link as before; the page's HTML sanitized.
+//   it; an old link as before; the page's HTML sanitized;
+// - compact links (P46): «Teilen» writes `?p=` (raw deflate, base64url),
+//   which opens the same project; zlib's test vector, old `?project=` and
+//   `#project=` links open; a cut `?p=` link shows the notice.
 // The browser's «leave the page» question and the iPad cases stay manual:
 // headless Chrome can't confirm them.
 //
@@ -24,6 +27,7 @@ import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import http from 'node:http'
 import lz from 'lz-string'
+import { deflateRawSync, inflateRawSync } from 'node:zlib'
 import { chromium } from 'playwright-core'
 
 const port = 4196
@@ -62,11 +66,21 @@ const link = (files, mainFile, version = 1, extra = {}) => {
   url.searchParams.set('project', lz.compressToEncodedURIComponent(JSON.stringify({ v: version, name: 'Check', mainFile, ...extra, files: Object.fromEntries(files.map((entry) => [entry.path, entry])) })))
   return url.toString()
 }
+// A shared link's payload, in either encoding; the compact one (`?p=`, raw
+// deflate in base64url) read with Node's zlib, as a course's script would.
 const payloadOf = (shareUrl) => {
   const url = new URL(shareUrl)
-  const encoded = url.searchParams.get('project') ?? new URLSearchParams(url.hash.slice(1)).get('project')
-  return JSON.parse(lz.decompressFromEncodedURIComponent(encoded))
+  const fragment = new URLSearchParams(url.hash.slice(1))
+  const compact = url.searchParams.get('p') ?? fragment.get('p')
+  if (compact !== null) return JSON.parse(inflateRawSync(Buffer.from(compact, 'base64url')).toString('utf8'))
+  return JSON.parse(lz.decompressFromEncodedURIComponent(url.searchParams.get('project') ?? fragment.get('project')))
 }
+// A link in the compact form, written with Node's zlib (not the IDE's fflate).
+const compactLink = (payload) => `${base}?p=${deflateRawSync(Buffer.from(JSON.stringify(payload), 'utf8'), { level: 9 }).toString('base64url')}`
+// The fixed test vector in the README: this payload, deflated with zlib at
+// level 9, in base64url without padding.
+const vectorPayload = { v: 1, name: 'Test', mainFile: 'main.py', files: { 'main.py': { path: 'main.py', label: 'main', kind: 'python', code: 'print("Grüezi")\n' } } }
+const vector = 'VcxBCoMwFATQu8yqQhDc_gO0F3CZTVq_-DF-gwbBhtysOy9WAiK4m3kMk7CBGgN1E4PQ8hphMDnRp_giJdZhh0EvnldQuogSgovDbeTdm_0pMBhFOxDCHoe59M_cldOwiMaHxWs5fvwVi8oqcs5_'
 const helfer = 'def doppelt(x):\n    return 2 * x\n'
 const main = 'from helfer import doppelt\n\n\ndef viermal(x):\n    """\n    >>> viermal(2)\n    8\n    """\n    return doppelt(doppelt(x))\n\n\nprint(viermal(21))\n'
 const twoFiles = link([file('helfer.py', helfer), file('main.py', main)], 'main.py')
@@ -380,6 +394,10 @@ try {
     assert.equal(await page.locator('.editor-tab.active').innerText(), 'aufgabe.md')
     assert.equal(await markdownSwitch(page), 'Ansicht')
     assert.deepEqual(await tabs(page), ['aufgabe.md', 'bib.py', 'auswerter.py'])
+    // The drawer: Python files by URL as libraries, the instructions to read.
+    await page.getByRole('button', { name: 'Dateien' }).click()
+    assert.deepEqual(await page.locator('.ide-libraries').evaluateAll((groups) => groups.map((group) => [group.querySelector('.ide-project-label').textContent, [...group.querySelectorAll('.ide-library-name > span')].map((name) => name.textContent)])), [['Bibliotheken', ['bib.py']], ['Zum Lesen', ['aufgabe.md']]])
+    await page.keyboard.press('Escape')
     await page.getByRole('button', { name: 'Teilen' }).click()
     await page.waitForTimeout(500)
     const shared = payloadOf(await page.evaluate(() => navigator.clipboard.readText()))
@@ -411,6 +429,52 @@ try {
     await page.waitForFunction(() => document.querySelector('.ide-notice')?.textContent.includes('HTTP 404'), null, { timeout: 15000 })
     assert.equal(await page.locator('.editor-tab.active').innerText(), 'auswerter.py')
     assert.deepEqual(await tabs(page), ['bib.py', 'auswerter.py'])
+    await context.close()
+  })
+
+  await check('compact links: «Teilen» writes ?p=, which opens the same project, order and tab', async () => {
+    const context = await newContext()
+    const page = await open(context, taskByUrl(`${libraryBase}aufgabe.md`))
+    await page.locator('.markdown-page h1').waitFor({ timeout: 15000 })
+    await openTab(page, 'auswerter.py')
+    await typeAtStart(page, '# meine Lösung\n')
+    await openTab(page, 'aufgabe.md')
+    await page.getByRole('button', { name: 'Teilen' }).click()
+    await page.waitForTimeout(500)
+    const shareUrl = await page.evaluate(() => navigator.clipboard.readText())
+    assert.match(shareUrl, /^http:\/\/localhost:\d+\/\?p=[A-Za-z0-9_-]+$/, 'the compact form, no padding')
+    const before = await stored(page)
+    const again = await open(context, shareUrl)
+    await again.locator('.markdown-page h1').waitFor({ timeout: 15000 })
+    assert.equal(await again.locator('.editor-tab.active').innerText(), 'aufgabe.md')
+    assert.deepEqual(await tabs(again), ['aufgabe.md', 'bib.py', 'auswerter.py'])
+    const after = await stored(again)
+    for (const path of ['auswerter.py', 'aufgabe.md', 'bib.py']) assert.deepEqual([after.files[path].code, after.files[path].readOnly], [before.files[path].code, before.files[path].readOnly], path)
+    assert.match(after.files['auswerter.py'].code, /^# meine Lösung\n/)
+    assert.equal(after.mainFile, 'auswerter.py')
+    await context.close()
+  })
+
+  await check('compact links: zlib\'s test vector opens; old ?project= and #project= links too', async () => {
+    assert.equal(deflateRawSync(Buffer.from(JSON.stringify(vectorPayload), 'utf8'), { level: 9 }).toString('base64url'), vector, 'the README\'s vector')
+    const context = await newContext()
+    const page = await open(context, `${base}?p=${vector}`)
+    assert.equal(await editorText(page), 'print("Grüezi")\n')
+    const fragment = new URL(twoFiles)
+    const oldFragment = await open(context, `${base}#project=${fragment.searchParams.get('project')}`)
+    assert.deepEqual(await tabs(oldFragment), ['helfer.py', 'main.py'])
+    const oldQuery = await open(context, twoFiles)
+    assert.deepEqual(await tabs(oldQuery), ['helfer.py', 'main.py'])
+    await context.close()
+  })
+
+  await check('compact links: a cut ?p= link shows the notice', async () => {
+    const context = await newContext()
+    const full = compactLink({ v: 1, name: 'Check', mainFile: 'main.py', files: { 'main.py': file('main.py', noise) } })
+    const page = await open(context, full.slice(0, Math.floor(full.length * 0.6)))
+    assert.match((await notices(page)).join(' | '), /Dieser Link ist unvollständig oder beschädigt\./)
+    assert.deepEqual(await tabs(page), ['main.py'])
+    assert.equal(await editorText(page), '')
     await context.close()
   })
 
