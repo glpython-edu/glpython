@@ -31,6 +31,10 @@ type ShellStrings = {
   pythonReference: string
   newProject: string
   about: string
+  // ⋮ «Optionen»: which parts the tab shows, one switch each (features.ts).
+  options: string
+  optionsHint: string
+  featureLabels: Record<'run' | 'tests' | 'visualize' | 'repl' | 'export' | 'coverage' | 'listtree' | 'tree', string>
   version: string
   built: string
   checkForUpdates: string
@@ -100,6 +104,18 @@ export const translations: Record<Locale, Translation> = {
     pythonReference: 'Python reference',
     newProject: 'New empty project',
     about: 'About',
+    options: 'Options',
+    optionsHint: 'What this tab shows. «Share» passes it on with the project.',
+    featureLabels: {
+      run: '▶ Run',
+      tests: 'Tests',
+      visualize: 'Visualize',
+      repl: 'Input line in the console (>>>)',
+      export: 'Copy → chain (in the visualizer)',
+      coverage: 'After Tests: lines no example ran',
+      listtree: 'Lists as trees',
+      tree: 'Visualizer mode «Tree»',
+    },
     version: 'Version',
     built: 'Built',
     checkForUpdates: 'Check for updates',
@@ -164,6 +180,18 @@ export const translations: Record<Locale, Translation> = {
     pythonReference: 'Python-Referenz',
     newProject: 'Neues leeres Projekt',
     about: 'Info',
+    options: 'Optionen',
+    optionsHint: 'Was dieser Tab zeigt. «Teilen» gibt es mit dem Projekt weiter.',
+    featureLabels: {
+      run: '▶ Ausführen',
+      tests: 'Tests',
+      visualize: 'Visualisieren',
+      repl: 'Eingabezeile in der Konsole (>>>)',
+      export: '→-Kette kopieren (im Visualisierer)',
+      coverage: 'Nach Tests: Zeilen, die kein Beispiel ausführt',
+      listtree: 'Listen als Baum',
+      tree: 'Visualisierer-Modus «Baum»',
+    },
     version: 'Version',
     built: 'Erstellt',
     checkForUpdates: 'Nach Updates suchen',

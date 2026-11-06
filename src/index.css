@@ -76,6 +76,10 @@ button { font: inherit; }
 .ide-closed-list .secondary-button { padding: 5px 10px; font-size: 13px; }
 /* ⋮ «Info»: version and build date, and «Nach Updates suchen». */
 .ide-info { width: min(380px, 100%); }
+.ide-options-list { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.ide-options-list label { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 2px 4px; border-radius: var(--glp-radius); cursor: pointer; }
+.ide-options-list label:hover { background: var(--glp-surface); }
+.ide-options-list input { width: 18px; height: 18px; margin: 0; accent-color: var(--glp-accent); }
 .ide-info-list { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 12px 0; }
 .ide-info-list dt { color: var(--glp-text-muted); }
 .ide-info-list dd { margin: 0; }

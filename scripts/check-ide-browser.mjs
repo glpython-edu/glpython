@@ -16,7 +16,11 @@
 //   it; an old link as before; the page's HTML sanitized;
 // - compact links (P46): «Teilen» writes `?p=` (raw deflate, base64url),
 //   which opens the same project; zlib's test vector, old `?project=` and
-//   `#project=` links open; a cut `?p=` link shows the notice.
+//   `#project=` links open; a cut `?p=` link shows the notice;
+// - settings through the link (P34 C, `features`): without `repl` no input
+//   line, but input() asks; ⋮ «Optionen» switches it back, a reload and
+//   «Teilen» keep the tab's settings; `listtree` and `tree`; ▶ without Tests
+//   and Tests without ▶; a link without settings as before.
 // The browser's «leave the page» question and the iPad cases stay manual:
 // headless Chrome can't confirm them.
 //
@@ -475,6 +479,95 @@ try {
     assert.match((await notices(page)).join(' | '), /Dieser Link ist unvollständig oder beschädigt\./)
     assert.deepEqual(await tabs(page), ['main.py'])
     assert.equal(await editorText(page), '')
+    await context.close()
+  })
+
+  // P34 C: what a tab shows. The buttons in the top bar, the REPL line.
+  const settingsPayload = (features, files = [file('main.py', 'name = input("Name: ")\nprint("Hallo", name)\n')]) => ({ v: 1, name: 'Check', mainFile: 'main.py', ...(features ? { features } : {}), files: Object.fromEntries(files.map((entry) => [entry.path, entry])) })
+  const barButtons = (page) => page.locator('.ide-actions .editor-actions > button').evaluateAll((buttons) => buttons.map((button) => button.textContent.replace(/\s+/g, ' ').trim().replace(/ ?Stop$/, '').replace(/^Ausführen.*/, 'Ausführen')))
+  const replLine = (page) => page.locator('.repl-line:not(.repl-line--program)').count()
+  const options = async (page) => {
+    await page.locator('.ide-menu-button').click()
+    await page.getByRole('menuitem', { name: 'Optionen' }).click()
+    return page.getByRole('dialog', { name: 'Optionen' })
+  }
+
+  await check('settings: without repl no input line, input() still asks; ⋮ Optionen, reload and Teilen', async () => {
+    const context = await newContext()
+    const page = await open(context, compactLink(settingsPayload(['run', 'tests', 'visualize', 'ide'])))
+    assert.deepEqual(await barButtons(page), ['Ausführen', 'Tests', 'Visualisieren'])
+    assert.equal(await replLine(page), 0, 'no REPL line')
+    await pythonReady(page)
+    await page.getByRole('button', { name: 'Ausführen' }).click()
+    await answer(page, 'Ada', 'Name: ')
+    await page.waitForFunction(() => document.querySelector('.console')?.textContent.includes('Hallo Ada'), null, { timeout: 30000 })
+    assert.equal(await replLine(page), 0, 'still no REPL line')
+    // ⋮ Optionen: the REPL line back on.
+    const dialog = await options(page)
+    assert.deepEqual(await dialog.locator('label').evaluateAll((labels) => labels.map((label) => [label.textContent.trim(), label.querySelector('input').checked])), [['▶ Ausführen', true], ['Tests', true], ['Visualisieren', true], ['Eingabezeile in der Konsole (>>>)', false], ['→-Kette kopieren (im Visualisierer)', false], ['Nach Tests: Zeilen, die kein Beispiel ausführt', false], ['Listen als Baum', false], ['Visualisierer-Modus «Baum»', false]])
+    await dialog.getByLabel('Eingabezeile in der Konsole (>>>)').check()
+    await page.keyboard.press('Escape')
+    assert.equal(await replLine(page), 1, 'the REPL line is back')
+    await page.reload()
+    await page.waitForFunction(() => window.monaco?.editor.getEditors().length > 0, null, { timeout: 60000 })
+    assert.equal(await replLine(page), 1, 'after a reload')
+    await page.getByRole('button', { name: 'Teilen' }).click()
+    await page.waitForTimeout(500)
+    assert.deepEqual(payloadOf(await page.evaluate(() => navigator.clipboard.readText())).features, ['run', 'tests', 'visualize', 'repl'])
+    await context.close()
+  })
+
+  await check('settings: listtree and tree - «Baum» in the visualizer, trees in the console', async () => {
+    const context = await newContext()
+    const page = await open(context, compactLink(settingsPayload(['run', 'repl', 'visualize', 'listtree', 'tree'], [file('main.py', 'baum = ["+", 2, ["*", 3, 4]]\nx = 2 + 3 * 4\n')])))
+    assert.deepEqual(await barButtons(page), ['Ausführen', 'Visualisieren'])
+    await pythonReady(page)
+    await page.getByRole('button', { name: 'Ausführen' }).click()
+    await page.waitForTimeout(1500)
+    await enterRepl(page, 'baum')
+    await page.locator('.repl-entry-tree').first().waitFor({ timeout: 30000 })
+    await page.locator('.ide-actions').getByRole('button', { name: 'Visualisieren' }).click()
+    await page.locator('.visualizer-mode').waitFor({ timeout: 60000 })
+    assert.deepEqual(await page.locator('.visualizer-mode button').allInnerTexts(), ['Kasten', 'Ersetzung', 'Baum'])
+    await page.locator('.visualizer-mode button', { hasText: 'Baum' }).click()
+    await page.getByRole('button', { name: 'Letzter Schritt' }).click()
+    await page.locator('.locals-row[data-name="baum"] .value-tree').first().waitFor({ timeout: 10000 })
+    await context.close()
+  })
+
+  await check('settings: ▶ without Tests, Tests without ▶', async () => {
+    const context = await newContext()
+    const runOnly = await open(context, compactLink(settingsPayload(['run', 'repl'])))
+    assert.deepEqual(await barButtons(runOnly), ['Ausführen'])
+    const testsOnly = await open(context, compactLink(settingsPayload(['tests', 'repl'], [file('main.py', 'def f():\n    """\n    >>> f()\n    1\n    """\n    return 1\n')])))
+    assert.deepEqual(await barButtons(testsOnly), ['Tests'])
+    await pythonReady(testsOnly)
+    await testsOnly.getByRole('button', { name: 'Tests', exact: true }).click()
+    await testsOnly.locator('.test-summary').waitFor({ timeout: 60000 })
+    await context.close()
+  })
+
+  await check('settings: a link without features, old and new form, as before', async () => {
+    const context = await newContext()
+    for (const url of [link([file('main.py', 'print(1)\n')], 'main.py'), compactLink(settingsPayload(null))]) {
+      const page = await open(context, url)
+      assert.deepEqual(await barButtons(page), ['Ausführen', 'Tests', 'Visualisieren'])
+      assert.equal(await replLine(page), 1)
+      const dialog = await options(page)
+      assert.deepEqual(await dialog.locator('input').evaluateAll((inputs) => inputs.map((input) => input.checked)), [true, true, true, true, true, true, false, false], 'the defaults')
+      await page.keyboard.press('Escape')
+      await page.getByRole('button', { name: 'Teilen' }).click()
+      await page.waitForTimeout(500)
+      assert.equal(payloadOf(await page.evaluate(() => navigator.clipboard.readText())).features, undefined, 'no settings written')
+    }
+    await context.close()
+  })
+
+  await check('settings: ?features= on a link without a project', async () => {
+    const context = await newContext()
+    const page = await open(context, `${base}?features=run,visualize`)
+    assert.deepEqual(await barButtons(page), ['Ausführen', 'Visualisieren'])
+    assert.equal(await replLine(page), 0)
     await context.close()
   })
 
