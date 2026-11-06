@@ -42,7 +42,7 @@ type SharedProjectPayload = {
 export type SharedLink =
   | { status: 'none' }
   | { status: 'broken' }
-  | { status: 'ok'; project: Project; libraries: Record<string, string>; openFile?: string }
+  | { status: 'ok'; project: Project; libraries: Record<string, string>; openFile?: string; order: string[] }
 
 function isProjectFile(value: unknown): value is ProjectFile {
   if (!value || typeof value !== 'object') return false
@@ -66,11 +66,15 @@ function isSharedProjectPayload(value: unknown): value is SharedProjectPayload {
 
 // `libraries`: the project's libraries by URL (path → URL); they go into the
 // link as URLs, not as their code.
-// `openFile`: the tab to open with (only if it is one of the project's).
-export function encodeProjectForUrl(project: Project, libraries: Record<string, string> = {}, openFile?: string): string {
+// `openFile`: the tab to open with (only if it is one of the project's);
+// `order`: the order of the tabs (files not in it follow).
+export function encodeProjectForUrl(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = []): string {
   const files: Record<string, ProjectFile | LibraryReference> = {}
-  for (const [path, file] of Object.entries(project.files)) if (!libraries[path]) files[path] = file
-  for (const [path, url] of Object.entries(libraries)) files[path] = { path, url, readOnly: true }
+  const paths = [...new Set([...order, ...Object.keys(project.files), ...Object.keys(libraries)])]
+  for (const path of paths) {
+    if (libraries[path]) files[path] = { path, url: libraries[path], readOnly: true }
+    else if (project.files[path]) files[path] = project.files[path]
+  }
   const payload: SharedProjectPayload = { v: Object.keys(libraries).length > 0 ? 2 : 1, name: project.name, mainFile: project.mainFile, ...(openFile && openFile !== project.mainFile && files[openFile] ? { openFile } : {}), files }
   return compressToEncodedURIComponent(JSON.stringify(payload))
 }
@@ -93,15 +97,17 @@ export function decodeProjectFromUrl(encoded: string): SharedLink {
       project: { id: `shared-${Date.now()}`, name: payload.name.trim() || 'Shared project', mainFile: payload.mainFile, files },
       libraries,
       ...(openFile ? { openFile } : {}),
+      // The tabs in the link's order (libraries by URL among the files).
+      order: Object.keys(payload.files),
     }
   } catch {
     return { status: 'broken' }
   }
 }
 
-export function buildShareUrl(project: Project, libraries: Record<string, string> = {}, openFile?: string): string {
+export function buildShareUrl(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = []): string {
   const url = new URL(import.meta.env.BASE_URL, window.location.origin)
-  const encoded = encodeProjectForUrl(project, libraries, openFile)
+  const encoded = encodeProjectForUrl(project, libraries, openFile, order)
   url.searchParams.set(SHARE_PARAM, encoded)
   if (url.pathname.length + url.search.length <= MAX_PATH_AND_QUERY) return url.toString()
   url.search = ''

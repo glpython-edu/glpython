@@ -35,11 +35,19 @@ const server = spawn('npx', ['vite', 'preview', '--port', String(port), '--stric
 // The libraries a link names by URL: bib.py, with CORS as GitHub Pages sends
 // it; anything else is a 404 (with CORS too, so the IDE sees the status).
 const library = 'def gross(text):\n    return text.upper()\n'
+// Also a task's instructions (aufgabe.md), and the same 3 seconds late.
+let aufgabe
 const libraryServer = http.createServer((request, response) => {
   const headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'text/plain; charset=utf-8' }
-  if (new URL(request.url, libraryBase).pathname === '/bib.py') {
+  const pathname = new URL(request.url, libraryBase).pathname
+  if (pathname === '/bib.py') {
     response.writeHead(200, headers)
     response.end(library)
+  } else if (pathname === '/aufgabe.md' || pathname === '/langsam/aufgabe.md') {
+    setTimeout(() => {
+      response.writeHead(200, headers)
+      response.end(aufgabe)
+    }, pathname === '/aufgabe.md' ? 0 : 3000)
   } else {
     response.writeHead(404, headers)
     response.end('not found')
@@ -67,8 +75,10 @@ const language = link([file('main.py', 'def berechnen(text):\n    return eval(te
 // A task: the file to work in, a library by URL and the instructions, open
 // at the start.
 const auswerter = 'from bib import gross\n\n\ndef auswerten(text):\n    """\n    >>> auswerten("ok")\n    \'OK\'\n    """\n    return gross(text)\n\n\nprint(auswerten("hallo"))\n'
-const aufgabe = '# Aufgabe 1\n\nErgänzen Sie `auswerten` in **auswerter.py**.\n\n- Tab *aufgabe.md*: diese Anleitung\n- Tab *auswerter.py*: Ihr Code\n\n```python\nauswerten("ok")\n```\n\n| Datei | Zweck |\n|---|---|\n| bib.py | Bibliothek |\n\n[Python-Doku](https://docs.python.org/3/)\n'
+aufgabe = '# Aufgabe 1\n\nErgänzen Sie `auswerten` in **auswerter.py**.\n\n- Tab *aufgabe.md*: diese Anleitung\n- Tab *auswerter.py*: Ihr Code\n\n```python\nauswerten("ok")\n```\n\n| Datei | Zweck |\n|---|---|\n| bib.py | Bibliothek |\n\n[Python-Doku](https://docs.python.org/3/)\n'
 const task = (instructions = aufgabe) => link([file('auswerter.py', auswerter), { path: 'bib.py', url: `${libraryBase}bib.py`, readOnly: true }, { path: 'aufgabe.md', label: 'aufgabe', kind: 'text', code: instructions, readOnly: true }], 'auswerter.py', 2, { openFile: 'aufgabe.md' })
+// The same with aufgabe.md by URL, first in the link, as a course writes it.
+const taskByUrl = (url) => link([{ path: 'aufgabe.md', url, readOnly: true }, { path: 'bib.py', url: `${libraryBase}bib.py`, readOnly: true }, file('auswerter.py', auswerter)], 'auswerter.py', 2, { openFile: 'aufgabe.md' })
 const hostile = '# Test\n\n<script>window.hacked = 1</script>\n\n<img src="x" onerror="window.hacked = 2">\n\n[Klick](javascript:window.hacked=3)\n\n<a href="#" onclick="window.hacked = 4">a</a>\n'
 const withReadOnly = link([file('bib.py', library, { readOnly: true }), file('main.py', 'from bib import gross\nprint(gross("hallo"))\n')], 'main.py')
 const byUrl = (url) => link([{ path: 'bib.py', url, readOnly: true }, file('main.py', 'from bib import gross\nprint(gross("hallo"))\n')], 'main.py', 2)
@@ -360,6 +370,47 @@ try {
     assert.equal(await page.locator('.editor-tab.active').innerText(), 'aufgabe.md')
     assert.equal(await page.locator('.markdown-page h1').innerText(), 'Aufgabe 1')
     assert.equal((await stored(page)).files['aufgabe.md'].readOnly, true)
+    await context.close()
+  })
+
+  await check('a task by URL: aufgabe.md opens as a page once loaded, tabs in the link\'s order', async () => {
+    const context = await newContext()
+    const page = await open(context, taskByUrl(`${libraryBase}aufgabe.md`))
+    await page.locator('.markdown-page h1').waitFor({ timeout: 15000 })
+    assert.equal(await page.locator('.editor-tab.active').innerText(), 'aufgabe.md')
+    assert.equal(await markdownSwitch(page), 'Ansicht')
+    assert.deepEqual(await tabs(page), ['aufgabe.md', 'bib.py', 'auswerter.py'])
+    await page.getByRole('button', { name: 'Teilen' }).click()
+    await page.waitForTimeout(500)
+    const shared = payloadOf(await page.evaluate(() => navigator.clipboard.readText()))
+    assert.equal(shared.openFile, 'aufgabe.md')
+    assert.deepEqual(Object.keys(shared.files), ['aufgabe.md', 'bib.py', 'auswerter.py'])
+    assert.deepEqual(shared.files['aufgabe.md'], { path: 'aufgabe.md', url: `${libraryBase}aufgabe.md`, readOnly: true })
+    await page.reload()
+    await page.waitForFunction(() => window.monaco?.editor.getEditors().length > 0, null, { timeout: 60000 })
+    await page.locator('.markdown-page h1').waitFor({ timeout: 15000 })
+    assert.equal(await page.locator('.editor-tab.active').innerText(), 'aufgabe.md')
+    assert.deepEqual(await tabs(page), ['aufgabe.md', 'bib.py', 'auswerter.py'])
+    await context.close()
+  })
+
+  await check('a task by URL: a slow aufgabe.md doesn\'t take the tab the learner chose', async () => {
+    const context = await newContext()
+    const page = await open(context, taskByUrl(`${libraryBase}langsam/aufgabe.md`))
+    assert.equal(await page.locator('.editor-tab.active').innerText(), 'auswerter.py', 'the file that runs until it has loaded')
+    await openTab(page, 'bib.py')
+    await page.locator('.editor-tab', { hasText: 'aufgabe.md' }).waitFor({ timeout: 15000 })
+    await page.waitForTimeout(500)
+    assert.equal(await page.locator('.editor-tab.active').innerText(), 'bib.py')
+    await context.close()
+  })
+
+  await check('a task by URL: an aufgabe.md that fails leaves the file that runs open', async () => {
+    const context = await newContext()
+    const page = await open(context, taskByUrl(`${libraryBase}fehlt/aufgabe.md`))
+    await page.waitForFunction(() => document.querySelector('.ide-notice')?.textContent.includes('HTTP 404'), null, { timeout: 15000 })
+    assert.equal(await page.locator('.editor-tab.active').innerText(), 'auswerter.py')
+    assert.deepEqual(await tabs(page), ['bib.py', 'auswerter.py'])
     await context.close()
   })
 

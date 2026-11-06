@@ -34,8 +34,11 @@ export type TabEntry = {
   // Its libraries by URL (path → state), see libraries.ts.
   libraries?: Record<string, LibraryState>
   // The tab it opens with (a share link's `openFile`, e.g. a task's
-  // instructions), also after a reload and in its own «Teilen» links.
+  // instructions), also after a reload and in its own «Teilen» links; a
+  // library by URL becomes it once fetched.
   openFile?: string
+  // The tabs' order, as in the link (libraries by URL among the files).
+  fileOrder?: string[]
 }
 
 // A fresh tab's project: one empty file to run. Decided by content, not by
@@ -148,7 +151,7 @@ export function startTab(link: SharedLink, empty: Project): { entry: TabEntry; f
   if (link.status === 'broken') return { entry: newTabEntry(empty, projectFingerprint(empty)), fresh: false, broken: true }
   if (link.status === 'ok') {
     const libraries = Object.fromEntries(Object.entries(link.libraries).map(([path, url]) => [path, { url, status: 'loading' as const }]))
-    return { entry: newTabEntry(link.project, projectFingerprint(link.project), Date.now(), libraries, link.openFile), fresh: false, broken: false }
+    return { entry: newTabEntry(link.project, projectFingerprint(link.project), Date.now(), libraries, link.openFile, link.order), fresh: false, broken: false }
   }
   // «Öffnen» in «Zuletzt geschlossen» opens a closed project in a new tab.
   const restored = restoreId ? loadEntry(restoreId) : null
@@ -175,8 +178,8 @@ export function startTab(link: SharedLink, empty: Project): { entry: TabEntry; f
 // A new tab project, held by this tab: an empty one, an imported project, or
 // a copy (a duplicated tab gets its own). The one this tab held before stays
 // as it is, among «Zuletzt geschlossen».
-export function newTabEntry(project: Project, savedFingerprint: string, changedAt = Date.now(), libraries: Record<string, LibraryState> = {}, openFile?: string): TabEntry {
-  const entry: TabEntry = { id: newTabId(), project, savedFingerprint, changedAt, libraries, ...(openFile ? { openFile } : {}) }
+export function newTabEntry(project: Project, savedFingerprint: string, changedAt = Date.now(), libraries: Record<string, LibraryState> = {}, openFile?: string, fileOrder?: string[]): TabEntry {
+  const entry: TabEntry = { id: newTabId(), project, savedFingerprint, changedAt, libraries, ...(openFile ? { openFile } : {}), ...(fileOrder ? { fileOrder } : {}) }
   saveEntry(entry)
   claimTabId(entry.id)
   return entry

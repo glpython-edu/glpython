@@ -158,7 +158,12 @@ editable one as its text. The page is rendered with
 in the Markdown shows as text, scripts, event attributes and `javascript:`
 links are removed, links open in a new tab, code is only shown. The tab's
 project, **Teilen**, a reload and the ZIP (`"openFile"` in `glpython.json`)
-keep `openFile`. For example:
+keep `openFile`. The instructions can come by URL, like a library (a shorter
+link for the hand-in): that tab becomes the open one once it has loaded,
+unless the learner has chosen another tab in the meantime; if it can't be
+loaded, `mainFile` stays open. The tabs follow the order of the files in the
+link (libraries by URL among them), and **Teilen** writes them in that order;
+a new file comes last. For example:
 
 ```json
 {
@@ -167,14 +172,16 @@ keep `openFile`. For example:
   "mainFile": "auswerter.py",
   "openFile": "aufgabe.md",
   "files": {
-    "auswerter.py": { "path": "auswerter.py", "label": "auswerter", "kind": "python", "code": "…" },
+    "aufgabe.md": { "path": "aufgabe.md", "url": "https://…/aufgabe.md", "readOnly": true },
     "parser.py": { "path": "parser.py", "url": "https://…/parser.py", "readOnly": true },
-    "aufgabe.md": { "path": "aufgabe.md", "label": "aufgabe", "kind": "text", "code": "# Aufgabe 1\n…", "readOnly": true }
+    "auswerter.py": { "path": "auswerter.py", "label": "auswerter", "kind": "python", "code": "…" }
   }
 }
 ```
 
 as `?project=` + `LZString.compressToEncodedURIComponent(JSON.stringify(…))`.
+A Markdown file can also carry its code (`"kind": "text", "code": "…"`,
+`"readOnly": true`); then it is open at once.
 
 ## Microsoft sign-in
 
