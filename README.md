@@ -146,6 +146,43 @@ lock: it can be read, run and imported, but not edited, renamed or deleted -
 e.g. a parser that learners use as a black box. This local format is also the shape planned for OneDrive
 folder synchronization.
 
+**A task's instructions as a tab.** A share link can name the tab that is
+open when the project opens: `"openFile": "aufgabe.md"` next to `mainFile`
+(any version; one that isn't among the files is ignored, and an IDE from
+before opens the link as it did). ▶, **Tests** and **Visualisieren** always
+act on `mainFile`, whichever tab is open. A Markdown file (`.md`) has a switch
+**Ansicht / Text** at the end of the tabs: a read-only one opens as a page, an
+editable one as its text. The page is rendered with
+[marked](https://marked.js.org/) and sanitized with
+[DOMPurify](https://github.com/cure53/DOMPurify) (both pinned): HTML written
+in the Markdown shows as text, scripts, event attributes and `javascript:`
+links are removed, links open in a new tab, code is only shown. The tab's
+project, **Teilen**, a reload and the ZIP (`"openFile"` in `glpython.json`)
+keep `openFile`. The instructions can come by URL, like a library (a shorter
+link for the hand-in): that tab becomes the open one once it has loaded,
+unless the learner has chosen another tab in the meantime; if it can't be
+loaded, `mainFile` stays open. The tabs follow the order of the files in the
+link (libraries by URL among them), and **Teilen** writes them in that order;
+a new file comes last. For example:
+
+```json
+{
+  "v": 2,
+  "name": "Aufgabe 1",
+  "mainFile": "auswerter.py",
+  "openFile": "aufgabe.md",
+  "files": {
+    "aufgabe.md": { "path": "aufgabe.md", "url": "https://…/aufgabe.md", "readOnly": true },
+    "parser.py": { "path": "parser.py", "url": "https://…/parser.py", "readOnly": true },
+    "auswerter.py": { "path": "auswerter.py", "label": "auswerter", "kind": "python", "code": "…" }
+  }
+}
+```
+
+as `?project=` + `LZString.compressToEncodedURIComponent(JSON.stringify(…))`.
+A Markdown file can also carry its code (`"kind": "text", "code": "…"`,
+`"readOnly": true`); then it is open at once.
+
 ## Microsoft sign-in
 
 Copy `.env.example` to `.env.local` and set the client ID from a Microsoft

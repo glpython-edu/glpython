@@ -5,16 +5,21 @@ type DirectoryPickerWindow = Window & {
   showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>
 }
 
-type ProjectMetadata = { name?: string; mainFile?: string; readOnly?: string[]; libraries?: Record<string, string> }
+type ProjectMetadata = { name?: string; mainFile?: string; openFile?: string; readOnly?: string[]; libraries?: Record<string, string> }
 
 // An imported project, with the URLs of its libraries (path → URL) that
 // glpython.json lists: their code is in the ZIP, and a share link of it
 // names them by URL again.
-export type ImportedProject = { project: Project; libraries: Record<string, string> }
+export type ImportedProject = { project: Project; libraries: Record<string, string>; openFile?: string }
 
 function librariesOf(files: Record<string, ProjectFile>, metadata: ProjectMetadata): Record<string, string> {
   const libraries = metadata.libraries && typeof metadata.libraries === 'object' ? metadata.libraries : {}
   return Object.fromEntries(Object.entries(libraries).filter(([path, url]) => files[path] && typeof url === 'string'))
+}
+
+// The tab to open with, if glpython.json names one of the files.
+function openFileOf(files: Record<string, ProjectFile>, metadata: ProjectMetadata): { openFile?: string } {
+  return typeof metadata.openFile === 'string' && files[metadata.openFile] ? { openFile: metadata.openFile } : {}
 }
 
 // The files glpython.json lists as read-only, marked so.
@@ -25,14 +30,14 @@ function withReadOnly(files: Record<string, ProjectFile>, metadata: ProjectMetad
 
 // `libraries`: the project's libraries by URL (path → URL). The ZIP holds
 // their code, so a hand-in is complete; glpython.json keeps their URLs.
-export async function exportProjectZip(project: Project, libraries: Record<string, string> = {}): Promise<Blob> {
+export async function exportProjectZip(project: Project, libraries: Record<string, string> = {}, openFile?: string): Promise<Blob> {
   const zip = new JSZip()
   for (const file of Object.values(project.files)) zip.file(file.path, file.code)
   // Which files are read-only (e.g. a course's library) travels in the
   // metadata, so a ZIP round trip keeps it.
   const readOnly = Object.values(project.files).filter((file) => file.readOnly).map((file) => file.path)
   const urls = Object.fromEntries(Object.entries(libraries).filter(([path]) => project.files[path]))
-  zip.file('glpython.json', JSON.stringify({ name: project.name, mainFile: project.mainFile, ...(readOnly.length > 0 ? { readOnly } : {}), ...(Object.keys(urls).length > 0 ? { libraries: urls } : {}) }, null, 2))
+  zip.file('glpython.json', JSON.stringify({ name: project.name, mainFile: project.mainFile, ...(openFile && openFile !== project.mainFile && project.files[openFile] ? { openFile } : {}), ...(readOnly.length > 0 ? { readOnly } : {}), ...(Object.keys(urls).length > 0 ? { libraries: urls } : {}) }, null, 2))
   return zip.generateAsync({ type: 'blob' })
 }
 
@@ -52,7 +57,7 @@ export async function importProjectZip(file: File, fallback: Project): Promise<I
     ? metadata.mainFile
     : pythonFiles[0]?.path ?? Object.keys(importedFiles)[0]
 
-  return { project: { ...fallback, name: metadata.name || file.name.replace(/\.zip$/i, '') || fallback.name, mainFile, files: importedFiles }, libraries: librariesOf(importedFiles, metadata) }
+  return { project: { ...fallback, name: metadata.name || file.name.replace(/\.zip$/i, '') || fallback.name, mainFile, files: importedFiles }, libraries: librariesOf(importedFiles, metadata), ...openFileOf(importedFiles, metadata) }
 }
 
 export async function importProjectFolder(fallback: Project): Promise<ImportedProject | null> {
@@ -70,7 +75,7 @@ export async function importProjectFolder(fallback: Project): Promise<ImportedPr
     : importedFiles['main.py']
       ? 'main.py'
       : pythonFiles[0]?.path ?? files[0]?.path
-  return { project: { ...fallback, name: metadata.name || directory.name, mainFile, files: importedFiles }, libraries: librariesOf(importedFiles, metadata) }
+  return { project: { ...fallback, name: metadata.name || directory.name, mainFile, files: importedFiles }, libraries: librariesOf(importedFiles, metadata), ...openFileOf(importedFiles, metadata) }
 }
 
 async function readProjectMetadata(directory: FileSystemDirectoryHandle): Promise<ProjectMetadata> {

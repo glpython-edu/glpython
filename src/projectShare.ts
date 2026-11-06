@@ -11,6 +11,12 @@ import type { Project, ProjectFile } from 'glpython-editor'
 // without the code, which the IDE fetches when the link opens - so a link
 // with a course's parser stays short. A link without libraries stays
 // version 1, which every IDE reads.
+//
+// `openFile` (P45, optional, any version): the tab open when the project
+// opens, e.g. a task's instructions (`aufgabe.md`, read-only, shown as a
+// page); ▶ still runs `mainFile`. One that isn't in the project is ignored;
+// an IDE from before reads the link as it did. A file with its code can be
+// `readOnly: true` too.
 const SHARE_PARAM = 'project'
 // GitHub Pages answers "414 URI Too Long" when a request's path and query
 // exceed 8192 characters - a program of roughly 5,000 to 30,000 characters,
@@ -26,6 +32,7 @@ type SharedProjectPayload = {
   v: number
   name: string
   mainFile: string
+  openFile?: string
   files: Record<string, ProjectFile | LibraryReference>
 }
 
@@ -35,7 +42,7 @@ type SharedProjectPayload = {
 export type SharedLink =
   | { status: 'none' }
   | { status: 'broken' }
-  | { status: 'ok'; project: Project; libraries: Record<string, string> }
+  | { status: 'ok'; project: Project; libraries: Record<string, string>; openFile?: string; order: string[] }
 
 function isProjectFile(value: unknown): value is ProjectFile {
   if (!value || typeof value !== 'object') return false
@@ -59,11 +66,16 @@ function isSharedProjectPayload(value: unknown): value is SharedProjectPayload {
 
 // `libraries`: the project's libraries by URL (path → URL); they go into the
 // link as URLs, not as their code.
-export function encodeProjectForUrl(project: Project, libraries: Record<string, string> = {}): string {
+// `openFile`: the tab to open with (only if it is one of the project's);
+// `order`: the order of the tabs (files not in it follow).
+export function encodeProjectForUrl(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = []): string {
   const files: Record<string, ProjectFile | LibraryReference> = {}
-  for (const [path, file] of Object.entries(project.files)) if (!libraries[path]) files[path] = file
-  for (const [path, url] of Object.entries(libraries)) files[path] = { path, url, readOnly: true }
-  const payload: SharedProjectPayload = { v: Object.keys(libraries).length > 0 ? 2 : 1, name: project.name, mainFile: project.mainFile, files }
+  const paths = [...new Set([...order, ...Object.keys(project.files), ...Object.keys(libraries)])]
+  for (const path of paths) {
+    if (libraries[path]) files[path] = { path, url: libraries[path], readOnly: true }
+    else if (project.files[path]) files[path] = project.files[path]
+  }
+  const payload: SharedProjectPayload = { v: Object.keys(libraries).length > 0 ? 2 : 1, name: project.name, mainFile: project.mainFile, ...(openFile && openFile !== project.mainFile && files[openFile] ? { openFile } : {}), files }
   return compressToEncodedURIComponent(JSON.stringify(payload))
 }
 
@@ -79,19 +91,23 @@ export function decodeProjectFromUrl(encoded: string): SharedLink {
       if (isProjectFile(file)) files[path] = file
       else libraries[path] = file.url
     }
+    const openFile = typeof payload.openFile === 'string' && payload.files[payload.openFile] ? payload.openFile : undefined
     return {
       status: 'ok',
       project: { id: `shared-${Date.now()}`, name: payload.name.trim() || 'Shared project', mainFile: payload.mainFile, files },
       libraries,
+      ...(openFile ? { openFile } : {}),
+      // The tabs in the link's order (libraries by URL among the files).
+      order: Object.keys(payload.files),
     }
   } catch {
     return { status: 'broken' }
   }
 }
 
-export function buildShareUrl(project: Project, libraries: Record<string, string> = {}): string {
+export function buildShareUrl(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = []): string {
   const url = new URL(import.meta.env.BASE_URL, window.location.origin)
-  const encoded = encodeProjectForUrl(project, libraries)
+  const encoded = encodeProjectForUrl(project, libraries, openFile, order)
   url.searchParams.set(SHARE_PARAM, encoded)
   if (url.pathname.length + url.search.length <= MAX_PATH_AND_QUERY) return url.toString()
   url.search = ''
