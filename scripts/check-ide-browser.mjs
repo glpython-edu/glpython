@@ -604,6 +604,8 @@ try {
     await page.getByRole('menuitem', { name: 'Info' }).click()
     const dialog = page.getByRole('dialog')
     assert.match(await dialog.innerText(), new RegExp(`Version\\s+${version.slice(0, 7)}`))
+    const editorSpec = JSON.parse(readFileSync('package.json', 'utf8')).dependencies['glpython-editor'].split('#')[1]
+    assert.match(await dialog.innerText(), new RegExp(`Editor\\s+${/^[0-9a-f]{40}$/.test(editorSpec) ? editorSpec.slice(0, 7) : editorSpec.replace(/\./g, '\\.')}`), 'the editor\'s version')
     await dialog.getByRole('button', { name: 'Nach Updates suchen' }).click()
     await page.waitForFunction(() => document.querySelector('.ide-info-check [role=status]')?.textContent === 'Diese Version ist aktuell.', null, { timeout: 10000 })
     // A newer deploy: the same check offers the reload.

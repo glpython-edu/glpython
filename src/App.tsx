@@ -41,6 +41,9 @@ function timeAgo(time: number, locale: string, justNow: string): string {
 // deployed now (version.json, see vite.config.ts): a tab that stayed open -
 // on an iPad often for days - offers to load the new one; ⋮ «Info» shows it.
 declare const __GLPYTHON_IDE_VERSION__: string
+// The glpython-editor version it bundles (its tag), for ⋮ «Info» too: most
+// of what learners see (editor, Tests, visualizer, hints) comes from there.
+declare const __GLPYTHON_EDITOR_VERSION__: string
 declare const __GLPYTHON_IDE_BUILT__: string
 const VERSION_CHECK_MS = 30 * 60 * 1000
 async function checkForNewVersion(): Promise<'current' | 'available' | 'failed'> {
@@ -521,6 +524,7 @@ function App() {
           <div className="ide-dialog-head"><strong id="ide-info-title">glpython</strong><button type="button" className="icon-button small" aria-label={t.dismiss} title={t.dismiss} onClick={closeInfo}><X size={16} /></button></div>
           <dl className="ide-info-list">
             <dt>{t.version}</dt><dd><code>{__GLPYTHON_IDE_VERSION__.slice(0, 7)}</code></dd>
+            <dt>{t.editorVersion}</dt><dd><code>{__GLPYTHON_EDITOR_VERSION__}</code></dd>
             <dt>{t.built}</dt><dd>{versionDate}</dd>
           </dl>
           <div className="ide-info-check">
