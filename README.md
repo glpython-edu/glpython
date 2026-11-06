@@ -149,6 +149,20 @@ so `https://glpython-edu.github.io/?p=VcxBCoMw…` opens it (`test:browser`
 checks this). The IDE's own encoder may write other bytes for the same
 payload; both open.
 
+**What a tab shows.** A link can set which parts the IDE shows, in the
+vocabulary of the embed's `features=`: `run` (▶), `tests`, `visualize`, `repl`
+(the console's `>>>` input line; the console stays, and `input()` still asks
+there), `export` (the visualizer's «→-Kette kopieren»), `coverage` (after
+Tests, the lines no example ran), `listtree` (lists as trees) and `tree` (the
+visualizer's mode «Baum»). Other names (`ide`, `reset`, unknown ones) are
+ignored. It goes into the payload as `"features": ["run", "repl", …]` (in
+either encoding), or as `?features=run,repl` on a link without a project. It
+is the tab's starting state, not a lock: ⋮ **Optionen** has a switch for each
+part; the tab keeps them across a reload, and **Teilen** writes its current
+settings (a tab that never had any writes none). Without settings the IDE
+shows what it always did: everything except `listtree` and `tree`. Unlike
+the embed, that includes `coverage`.
+
 **Libraries by URL.** A share link (version 2) can name a library by its URL
 instead of carrying its code, e.g. a course's `parser.py`:
 `{"path": "parser.py", "url": "https://…/parser.py", "readOnly": true}`. The

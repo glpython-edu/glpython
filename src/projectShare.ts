@@ -1,5 +1,6 @@
 import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate'
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string'
+import { parseFeatures, type Feature } from './features'
 import type { Project, ProjectFile } from 'glpython-editor'
 
 // URL query parameter used to carry a whole project (name, main file, and
@@ -18,6 +19,10 @@ import type { Project, ProjectFile } from 'glpython-editor'
 // page); ▶ still runs `mainFile`. One that isn't in the project is ignored;
 // an IDE from before reads the link as it did. A file with its code can be
 // `readOnly: true` too.
+//
+// `features` (P34 C, optional, any version): which parts the IDE shows when
+// the project opens, in the embed's `features=` vocabulary (see
+// features.ts); without it, everything as before.
 //
 // Two encodings of the same JSON payload (P46):
 // - `?p=` (written since P46): the payload's UTF-8 bytes compressed with raw
@@ -49,6 +54,7 @@ type SharedProjectPayload = {
   name: string
   mainFile: string
   openFile?: string
+  features?: Feature[]
   files: Record<string, ProjectFile | LibraryReference>
 }
 
@@ -58,7 +64,7 @@ type SharedProjectPayload = {
 export type SharedLink =
   | { status: 'none' }
   | { status: 'broken' }
-  | { status: 'ok'; project: Project; libraries: Record<string, string>; openFile?: string; order: string[] }
+  | { status: 'ok'; project: Project; libraries: Record<string, string>; openFile?: string; order: string[]; features?: Feature[] }
 
 function isProjectFile(value: unknown): value is ProjectFile {
   if (!value || typeof value !== 'object') return false
@@ -84,19 +90,20 @@ function isSharedProjectPayload(value: unknown): value is SharedProjectPayload {
 // link as URLs, not as their code.
 // `openFile`: the tab to open with (only if it is one of the project's);
 // `order`: the order of the tabs (files not in it follow).
-function payloadOf(project: Project, libraries: Record<string, string>, openFile: string | undefined, order: string[]): SharedProjectPayload {
+// `features`: the tab's settings, if it has any.
+function payloadOf(project: Project, libraries: Record<string, string>, openFile: string | undefined, order: string[], features?: Feature[]): SharedProjectPayload {
   const files: Record<string, ProjectFile | LibraryReference> = {}
   const paths = [...new Set([...order, ...Object.keys(project.files), ...Object.keys(libraries)])]
   for (const path of paths) {
     if (libraries[path]) files[path] = { path, url: libraries[path], readOnly: true }
     else if (project.files[path]) files[path] = project.files[path]
   }
-  return { v: Object.keys(libraries).length > 0 ? 2 : 1, name: project.name, mainFile: project.mainFile, ...(openFile && openFile !== project.mainFile && files[openFile] ? { openFile } : {}), files }
+  return { v: Object.keys(libraries).length > 0 ? 2 : 1, name: project.name, mainFile: project.mainFile, ...(openFile && openFile !== project.mainFile && files[openFile] ? { openFile } : {}), ...(features ? { features } : {}), files }
 }
 
 // The old encoding (`?project=`), for the checks and as a reference.
-export function encodeProjectForUrl(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = []): string {
-  return compressToEncodedURIComponent(JSON.stringify(payloadOf(project, libraries, openFile, order)))
+export function encodeProjectForUrl(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = [], features?: Feature[]): string {
+  return compressToEncodedURIComponent(JSON.stringify(payloadOf(project, libraries, openFile, order, features)))
 }
 
 function toBase64Url(bytes: Uint8Array): string {
@@ -112,8 +119,8 @@ function fromBase64Url(text: string): Uint8Array | null {
 }
 
 // The compact encoding (`?p=`), see above.
-export function encodeProjectCompact(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = []): string {
-  return toBase64Url(deflateSync(strToU8(JSON.stringify(payloadOf(project, libraries, openFile, order))), { level: 9 }))
+export function encodeProjectCompact(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = [], features?: Feature[]): string {
+  return toBase64Url(deflateSync(strToU8(JSON.stringify(payloadOf(project, libraries, openFile, order, features))), { level: 9 }))
 }
 
 function inflatePayload(encoded: string): string | null {
@@ -137,6 +144,7 @@ export function decodeProjectFromUrl(encoded: string, compact = false): SharedLi
       else libraries[path] = file.url
     }
     const openFile = typeof payload.openFile === 'string' && payload.files[payload.openFile] ? payload.openFile : undefined
+    const features = parseFeatures(payload.features)
     return {
       status: 'ok',
       project: { id: `shared-${Date.now()}`, name: payload.name.trim() || 'Shared project', mainFile: payload.mainFile, files },
@@ -144,15 +152,16 @@ export function decodeProjectFromUrl(encoded: string, compact = false): SharedLi
       ...(openFile ? { openFile } : {}),
       // The tabs in the link's order (libraries by URL among the files).
       order: Object.keys(payload.files),
+      ...(features ? { features } : {}),
     }
   } catch {
     return { status: 'broken' }
   }
 }
 
-export function buildShareUrl(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = []): string {
+export function buildShareUrl(project: Project, libraries: Record<string, string> = {}, openFile?: string, order: string[] = [], features?: Feature[]): string {
   const url = new URL(import.meta.env.BASE_URL, window.location.origin)
-  const encoded = encodeProjectCompact(project, libraries, openFile, order)
+  const encoded = encodeProjectCompact(project, libraries, openFile, order, features)
   url.searchParams.set(COMPACT_PARAM, encoded)
   if (url.pathname.length + url.search.length <= MAX_PATH_AND_QUERY) return url.toString()
   url.search = ''

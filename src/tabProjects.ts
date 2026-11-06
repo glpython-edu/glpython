@@ -1,6 +1,7 @@
 import { initialProject, type Project } from 'glpython-editor'
 import type { LibraryState } from './libraries'
 import type { SharedLink } from './projectShare'
+import type { Feature } from './features'
 
 // Per-tab projects (P25), as in WebTigerPython: each browser tab has its own
 // project. Opening a share link never replaces another tab's work, and
@@ -39,6 +40,9 @@ export type TabEntry = {
   openFile?: string
   // The tabs' order, as in the link (libraries by URL among the files).
   fileOrder?: string[]
+  // Which parts the IDE shows in this tab (features.ts), from a link or
+  // ⋮ «Optionen»; without it, the IDE's defaults.
+  features?: Feature[]
 }
 
 // A fresh tab's project: one empty file to run. Decided by content, not by
@@ -146,7 +150,19 @@ export function claimTabId(id: string): void {
 // is true for the empty one: only then is another tab's project offered (see
 // recentlyClosed). A link that can't be read gives `empty` and `broken`:
 // never another project.
-export function startTab(link: SharedLink, empty: Project): { entry: TabEntry; fresh: boolean; broken: boolean } {
+// `features`: a plain `?features=` on the address, for this tab (a link's
+// own `features` win).
+export function startTab(link: SharedLink, empty: Project, features: Feature[] | null = null): { entry: TabEntry; fresh: boolean; broken: boolean } {
+  const started = startTabEntry(link, empty)
+  const chosen = (link.status === 'ok' ? link.features : undefined) ?? features ?? undefined
+  if (chosen) {
+    started.entry = { ...started.entry, features: chosen }
+    saveEntry(started.entry)
+  }
+  return started
+}
+
+function startTabEntry(link: SharedLink, empty: Project): { entry: TabEntry; fresh: boolean; broken: boolean } {
   const restoreId = new URLSearchParams(window.location.search).get('restore')
   if (link.status === 'broken') return { entry: newTabEntry(empty, projectFingerprint(empty)), fresh: false, broken: true }
   if (link.status === 'ok') {
@@ -178,8 +194,8 @@ export function startTab(link: SharedLink, empty: Project): { entry: TabEntry; f
 // A new tab project, held by this tab: an empty one, an imported project, or
 // a copy (a duplicated tab gets its own). The one this tab held before stays
 // as it is, among «Zuletzt geschlossen».
-export function newTabEntry(project: Project, savedFingerprint: string, changedAt = Date.now(), libraries: Record<string, LibraryState> = {}, openFile?: string, fileOrder?: string[]): TabEntry {
-  const entry: TabEntry = { id: newTabId(), project, savedFingerprint, changedAt, libraries, ...(openFile ? { openFile } : {}), ...(fileOrder ? { fileOrder } : {}) }
+export function newTabEntry(project: Project, savedFingerprint: string, changedAt = Date.now(), libraries: Record<string, LibraryState> = {}, openFile?: string, fileOrder?: string[], features?: Feature[]): TabEntry {
+  const entry: TabEntry = { id: newTabId(), project, savedFingerprint, changedAt, libraries, ...(openFile ? { openFile } : {}), ...(fileOrder ? { fileOrder } : {}), ...(features ? { features } : {}) }
   saveEntry(entry)
   claimTabId(entry.id)
   return entry

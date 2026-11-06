@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { BookOpen, CircleHelp, Download, Info, EllipsisVertical, FileCode2, FilePlus2, Folder, FolderOpen, History, Link2, Lock, Pencil, Plus, RotateCcw, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { BookOpen, CircleHelp, Download, Info, EllipsisVertical, SlidersHorizontal, FileCode2, FilePlus2, Folder, FolderOpen, History, Link2, Lock, Pencil, Plus, RotateCcw, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { GlPythonWorkspace, addProjectFile, deleteProjectFile, renameProjectFile, updateProjectFile } from 'glpython-editor'
 import type { Project, ProjectFileKind, WorkspaceCommand } from 'glpython-editor'
 import 'glpython-editor/style.css'
@@ -8,6 +8,7 @@ import { exportProjectZip, importProjectFolder, importProjectZip } from './proje
 import { buildShareUrl, readSharedLinkFromLocation } from './projectShare'
 import { fetchLibrary, libraryHost, type LibraryState } from './libraries'
 import { renderMarkdown } from './markdown'
+import { capabilitiesOf, DEFAULT_FEATURES, FEATURE_NAMES, readFeaturesParam, type Feature } from './features'
 import { answerTabQueries, claimTabId, isEmptyProject, newTabEntry, otherLiveTabIds, projectFingerprint, pruneEntries, recentlyClosed, removeEntry, saveEntry, startTab, type TabEntry } from './tabProjects'
 import { detectLocale, localeNames, saveLocale, translations, type Locale } from './i18n'
 
@@ -17,7 +18,7 @@ import { detectLocale, localeNames, saveLocale, translations, type Locale } from
 // a link that can't be read, that empty project and a notice. Runs once at
 // module load, since every useState initializer below needs the same result.
 const EMPTY_PROJECT: Project = { id: 'empty', name: translations[detectLocale()].emptyProjectName, mainFile: 'main.py', files: { 'main.py': { path: 'main.py', label: 'main', kind: 'python', code: '' } } }
-const startup = startTab(readSharedLinkFromLocation(), EMPTY_PROJECT)
+const startup = startTab(readSharedLinkFromLocation(), EMPTY_PROJECT, readFeaturesParam())
 // OneNote cuts links at 2,083 characters (Internet Explorer's old limit,
 // which other programs kept too): «Teilen» copies longer ones with a note.
 const LONG_LINK = 2083
@@ -95,6 +96,16 @@ function App() {
   // The tabs' order: the link's (libraries by URL among the files), new
   // files after them.
   const [fileOrder, setFileOrder] = useState(startup.entry.fileOrder)
+  // Which parts the IDE shows in this tab (features.ts): a link's settings or
+  // ⋮ «Optionen»'s, else the defaults. Settings once chosen go into «Teilen».
+  const [features, setFeatures] = useState<Feature[] | undefined>(startup.entry.features)
+  const shownFeatures = features ?? DEFAULT_FEATURES
+  const [isOptionsOpen, setIsOptionsOpen] = useState(false)
+  const optionsDialogRef = useRef<HTMLDivElement | null>(null)
+  const toggleFeature = (name: Feature) => setFeatures((current) => {
+    const now = current ?? DEFAULT_FEATURES
+    return FEATURE_NAMES.filter((other) => other === name ? !now.includes(name) : now.includes(other))
+  })
   // This tab's project (tabProjects.ts): its id, and its fingerprint at the
   // last «Teilen»/«Herunterladen» - changes since then are unsaved, and the
   // browser asks before the tab is closed or reloaded.
@@ -143,8 +154,8 @@ function App() {
     if (fingerprint !== lastFingerprintRef.current) changedAtRef.current = Date.now()
     lastFingerprintRef.current = fingerprint
     unsavedRef.current = fingerprint !== savedFingerprint
-    saveEntry({ id: tabId, project, savedFingerprint, changedAt: changedAtRef.current, libraries, ...(openFile && (project.files[openFile] || libraries[openFile]) ? { openFile } : {}), ...(fileOrder ? { fileOrder } : {}) })
-  }, [project, savedFingerprint, tabId, libraries, openFile, fileOrder])
+    saveEntry({ id: tabId, project, savedFingerprint, changedAt: changedAtRef.current, libraries, ...(openFile && (project.files[openFile] || libraries[openFile]) ? { openFile } : {}), ...(fileOrder ? { fileOrder } : {}), ...(features ? { features } : {}) })
+  }, [project, savedFingerprint, tabId, libraries, openFile, fileOrder, features])
 
   // Libraries still to fetch: once, when the link opened (and again after
   // «Erneut versuchen»); fetched, a library is a read-only file of the project.
@@ -172,7 +183,7 @@ function App() {
     const stopAnswering = answerTabQueries(() => tabIdRef.current)
     void otherLiveTabIds().then((liveIds) => {
       if (liveIds.has(tabIdRef.current)) {
-        const copy = newTabEntry(project, savedFingerprint, changedAtRef.current, libraries, openFile, fileOrder)
+        const copy = newTabEntry(project, savedFingerprint, changedAtRef.current, libraries, openFile, fileOrder, features)
         setTabId(copy.id)
       }
       if (startup.fresh) setClosedOffer(recentlyClosed(tabIdRef.current, liveIds).filter((entry) => Date.now() - entry.changedAt < OFFER_CLOSED_MS))
@@ -301,7 +312,7 @@ function App() {
   // Teilen: the link to a copy of this project, copied with a short
   // confirmation beside the button, or shown to copy by hand.
   const shareProject = async () => {
-    const shareUrl = buildShareUrl(project, libraryUrls, openFile, orderedPaths)
+    const shareUrl = buildShareUrl(project, libraryUrls, openFile, orderedPaths, features)
     setLongLinkLength(shareUrl.length > LONG_LINK ? shareUrl.length : null)
     try {
       await navigator.clipboard.writeText(shareUrl)
@@ -329,6 +340,7 @@ function App() {
     setActiveFile(next.openFile && next.project.files[next.openFile] ? next.openFile : next.project.mainFile)
     setOpenFile(next.openFile)
     setFileOrder(next.fileOrder)
+    setFeatures(next.features)
     tabChosenRef.current = false
     setLibraries(next.libraries ?? {})
     setClosedOffer([])
@@ -371,6 +383,13 @@ function App() {
   useEffect(() => {
     if (isInfoOpen) infoDialogRef.current?.querySelector<HTMLElement>('button')?.focus()
   }, [isInfoOpen])
+  const closeOptions = () => {
+    setIsOptionsOpen(false)
+    menuButtonRef.current?.focus()
+  }
+  useEffect(() => {
+    if (isOptionsOpen) optionsDialogRef.current?.querySelector<HTMLElement>('input')?.focus()
+  }, [isOptionsOpen])
 
   const openFolder = async () => {
     try {
@@ -422,6 +441,7 @@ function App() {
                 {(Object.keys(localeNames) as Locale[]).map((code) => <button type="button" key={code} role="menuitemradio" aria-checked={code === locale} onClick={fromMenu(() => selectLocale(code))}><span className="ide-menu-check" aria-hidden="true" /> {localeNames[code]}</button>)}
               </div>
               <div className="ide-menu-group">
+                <button type="button" role="menuitem" onClick={fromMenu(() => setIsOptionsOpen(true))}><SlidersHorizontal size={15} /> {t.options}</button>
                 <button type="button" role="menuitem" onClick={fromMenu(() => { setInfoCheck('idle'); setIsInfoOpen(true) })}><Info size={15} /> {t.about}</button>
               </div>
             </div>}
@@ -490,7 +510,7 @@ function App() {
             onGraphicsOpenChange={setIsGraphicsOpen}
             actionsContainer={actionsContainer}
             command={workspaceCommand}
-            capabilities={{ breadcrumbs: false, closeFileTabs: false, resetOutput: false, coverage: true }}
+            capabilities={{ breadcrumbs: false, closeFileTabs: false, resetOutput: false, ...capabilitiesOf(shownFeatures) }}
             renderMarkdown={renderMarkdown}
             t={t}
           />
@@ -508,6 +528,16 @@ function App() {
             <span role="status">{infoCheck === 'checking' ? t.checkingForUpdates : infoCheck === 'current' ? t.upToDate : infoCheck === 'failed' ? t.updateCheckFailed : ''}</span>
           </div>
           {infoCheck === 'available' && <div className="ide-notice" role="status"><span>{t.updateAvailable}</span><button type="button" className="secondary-button" onClick={() => window.location.reload()}><RotateCcw size={14} /> {t.reloadNow}</button></div>}
+        </div>
+      </div>}
+      {/* ⋮ «Optionen»: which parts this tab shows (a link sets where it starts). */}
+      {isOptionsOpen && <div className="ide-dialog-backdrop" role="presentation" onClick={closeOptions}>
+        <div className="ide-dialog ide-options" role="dialog" aria-modal="true" aria-labelledby="ide-options-title" ref={optionsDialogRef} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); closeOptions() } }}>
+          <div className="ide-dialog-head"><strong id="ide-options-title">{t.options}</strong><button type="button" className="icon-button small" aria-label={t.dismiss} title={t.dismiss} onClick={closeOptions}><X size={16} /></button></div>
+          <p className="ide-dialog-hint">{t.optionsHint}</p>
+          <ul className="ide-options-list">
+            {FEATURE_NAMES.map((name) => <li key={name}><label><input type="checkbox" checked={shownFeatures.includes(name)} onChange={() => toggleFeature(name)} /> <span>{t.featureLabels[name]}</span></label></li>)}
+          </ul>
         </div>
       </div>}
       {closedList && <div className="ide-dialog-backdrop" role="presentation" onClick={() => setClosedList(null)}>
