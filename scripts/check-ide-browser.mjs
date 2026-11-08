@@ -504,7 +504,7 @@ try {
     assert.equal(await replLine(page), 0, 'still no REPL line')
     // ⋮ Optionen: the REPL line back on.
     const dialog = await options(page)
-    assert.deepEqual(await dialog.locator('label').evaluateAll((labels) => labels.map((label) => [label.textContent.trim(), label.querySelector('input').checked])), [['▶ Ausführen', true], ['Tests', true], ['Visualisieren', true], ['Eingabezeile in der Konsole (>>>)', false], ['→-Kette kopieren (im Visualisierer)', false], ['Nach Tests: Zeilen, die kein Beispiel ausführt', false], ['Listen als Baum', false], ['Visualisierer-Modus «Baum»', false]])
+    assert.deepEqual(await dialog.locator('label').evaluateAll((labels) => labels.map((label) => [label.textContent.trim(), label.querySelector('input').checked])), [['▶ Ausführen', true], ['Tests', true], ['Visualisieren', true], ['Eingabezeile in der Konsole (>>>)', false], ['→-Kette kopieren (im Visualisierer)', false], ['Zeilen, die von keinem Test ausgeführt wurden', false], ['Listen als Baum', false], ['Visualisierer-Modus «Baum»', false]])
     await dialog.getByLabel('Eingabezeile in der Konsole (>>>)').check()
     await page.keyboard.press('Escape')
     assert.equal(await replLine(page), 1, 'the REPL line is back')
