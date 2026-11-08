@@ -596,6 +596,24 @@ try {
     await context.close()
   })
 
+  await check('icons: favicon.ico, favicon.svg, apple-touch-icon, each ?v=2 (P41)', async () => {
+    const context = await newContext()
+    const page = await open(context, base)
+    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]')].map((link) => [link.rel, link.getAttribute('href'), link.type, link.getAttribute('sizes')])), [
+      ['icon', '/favicon.ico?v=2', '', '32x32'],
+      ['icon', '/favicon.svg?v=2', 'image/svg+xml', null],
+      ['apple-touch-icon', '/apple-touch-icon.png?v=2', '', null],
+    ])
+    // Through the page, i.e. through the service worker: served, with the query, as images.
+    const served = await page.evaluate(async () => Promise.all(['/favicon.ico?v=2', '/favicon.svg?v=2', '/apple-touch-icon.png?v=2'].map(async (path) => {
+      const response = await fetch(path)
+      return [path, response.status, response.headers.get('content-type')?.split(';')[0], (await response.arrayBuffer()).byteLength > 0]
+    })))
+    assert.deepEqual(served.map(([path, status, , filled]) => [path, status, filled]), [['/favicon.ico?v=2', 200, true], ['/favicon.svg?v=2', 200, true], ['/apple-touch-icon.png?v=2', 200, true]])
+    assert.ok(served.every(([, , type]) => /^image\//.test(type)), `as images: ${served.map(([, , type]) => type).join(', ')}`)
+    await context.close()
+  })
+
   await check('⋮ «Info»: the version from version.json, and the update check', async () => {
     const { version } = JSON.parse(readFileSync(new URL('../dist/version.json', import.meta.url), 'utf8'))
     const context = await newContext()
