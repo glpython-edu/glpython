@@ -1,8 +1,22 @@
 name: Deploy to GitHub Pages
 
+# GitHub Pages serves one deployment per repo, so every run builds both
+# channels into one site, each from its branch's current commit:
+#   /      the live IDE, from main, with the glpython-editor tag it pins
+#   /dev/  the dev IDE, from dev, against glpython-editor's dev branch
+#          (not a tag), with a «dev» badge
+# A push to dev rebuilds main's commit unchanged (the build is deterministic,
+# and version.json keeps main's commit, so open tabs see no update), so it
+# never changes the live IDE.
+#
+# glpython-editor's dev branch moves in another repo, which can't start this
+# workflow without a token. So a scheduled run looks every 30 minutes and
+# deploys only when that branch has a commit the dev IDE wasn't built with.
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
+  schedule:
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -10,31 +24,88 @@ permissions:
   pages: write
   id-token: write
 
+# One deployment after the other: a cancelled run could drop the other
+# channel's change.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      editor: ${{ steps.editor.outputs.commit }}
+      build: ${{ steps.editor.outputs.build }}
+    steps:
+      - name: glpython-editor's dev commit, and whether to build
+        id: editor
+        run: |
+          commit=$(git ls-remote https://github.com/glpython-edu/glpython-editor.git refs/heads/dev | cut -f1)
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          deployed=$(curl -fsS "https://glpython-edu.github.io/dev/version.json?t=$(date +%s)" | jq -r '.editor // empty' || true)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$deployed" = "dev@${commit:0:7}" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "The dev IDE already has glpython-editor dev@${commit:0:7}."
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: live
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: dev
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: '*/package-lock.json'
       - name: Use HTTPS for git dependencies
         run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
-      - name: Install dependencies
-        run: npm ci
-      - name: Build
-        run: npm run build
+      # GITHUB_SHA is the commit that started the run (e.g. dev's), so each
+      # channel names its own commit in version.json (vite.config.ts), and its
+      # date as the build's, which keeps a rebuild identical.
+      - name: Build the live IDE (main)
+        working-directory: live
+        run: |
+          npm ci
+          GITHUB_SHA=$(git rev-parse HEAD) GLPYTHON_BUILT=$(git log -1 --format=%cI) npm run build
+      # A broken dev build stops a deployment that dev (or the schedule)
+      # triggered, so nothing changes, but not one that main triggered: the
+      # live IDE goes out, the dev channel is missing until dev builds again.
+      - name: Build the dev IDE (dev, against glpython-editor's dev branch)
+        id: dev
+        working-directory: dev
+        continue-on-error: ${{ github.ref_name == 'main' && github.event_name == 'push' }}
+        env:
+          EDITOR_COMMIT: ${{ needs.plan.outputs.editor }}
+        run: |
+          npm ci
+          npm install --no-save "glpython-editor@git+https://github.com/glpython-edu/glpython-editor.git#$EDITOR_COMMIT"
+          GITHUB_SHA=$(git rev-parse HEAD) GLPYTHON_BUILT=$(git log -1 --format=%cI) GLPYTHON_CHANNEL=dev GLPYTHON_EDITOR_VERSION="dev@${EDITOR_COMMIT:0:7}" npm run build
+      - name: Put both into one site
+        run: |
+          mkdir site
+          cp -R live/dist/. site/
+          if [ "${{ steps.dev.outcome }}" = "success" ]; then
+            cp -R dev/dist site/dev
+          else
+            echo "::warning title=No dev channel::The dev branch didn't build; this deployment has only the live IDE."
+          fi
+          echo "live: $(git -C live rev-parse --short HEAD), dev: $(git -C dev rev-parse --short HEAD), editor dev: ${{ needs.plan.outputs.editor }}"
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: site
 
   deploy:
     needs: build

@@ -273,6 +273,18 @@ layout locally. The embed for LiaScript courses lives next to it, at
 <https://glpython-edu.github.io/glpython-editor/>, deployed from
 glpython-editor.
 
+**The dev channel.** The same workflow builds the `dev` branch into
+<https://glpython-edu.github.io/dev/>, against glpython-editor's `dev` branch
+(not a tag), with a «DEV» badge in the bar. Pages serves one deployment per
+repo, so every run builds both branches' current commits; a push to `dev`
+rebuilds `main`'s commit byte for byte (the build takes the commit's date), so
+the live IDE doesn't change. A new commit on glpython-editor's `dev` reaches
+the dev IDE within 30 minutes (a scheduled run), or at once with «Run
+workflow» on `dev`. The dev IDE keeps its tab projects under keys of its own
+(`dev:…`), so it never touches the live IDE's. Its links («Teilen») open the
+dev IDE. Locally: `GLPYTHON_CHANNEL=dev npm run build && GLPYTHON_CHANNEL=dev
+npm run preview`, then open `/dev/`.
+
 ## Next integration step
 
 Add an Entra ID application registration, configure MSAL.js with the tenant

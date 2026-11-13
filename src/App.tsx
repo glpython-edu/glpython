@@ -12,6 +12,7 @@ import { GlpythonMark } from './GlpythonMark'
 import { capabilitiesOf, DEFAULT_FEATURES, FEATURE_NAMES, readFeaturesParam, type Feature } from './features'
 import { answerTabQueries, claimTabId, isEmptyProject, newTabEntry, otherLiveTabIds, projectFingerprint, pruneEntries, recentlyClosed, removeEntry, saveEntry, startTab, type TabEntry } from './tabProjects'
 import { detectLocale, localeNames, saveLocale, translations, type Locale } from './i18n'
+import { CHANNEL } from './channel'
 
 // This tab's project to start with (see tabProjects.ts): a share link's
 // (`?project=`), else the one this tab held before, else one empty main.py -
@@ -50,7 +51,8 @@ const VERSION_CHECK_MS = 30 * 60 * 1000
 async function checkForNewVersion(): Promise<'current' | 'available' | 'failed'> {
   if (import.meta.env.DEV) return 'current'
   try {
-    const response = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' })
+    // The channel's own file (BASE_URL: "/" live, "/dev/" for the dev channel).
+    const response = await fetch(`${import.meta.env.BASE_URL}version.json?t=${Date.now()}`, { cache: 'no-store' })
     const { version } = await response.json() as { version?: string }
     if (!version) return 'failed'
     return version === __GLPYTHON_IDE_VERSION__ ? 'current' : 'available'
@@ -357,7 +359,7 @@ function App() {
   const openClosedProject = (entry: TabEntry) => {
     setClosedList(null)
     if (isEmptyProject(project)) switchTabProject(entry.project, entry.savedFingerprint, entry)
-    else window.open(`/?restore=${encodeURIComponent(entry.id)}`, '_blank', 'noopener')
+    else window.open(`${import.meta.env.BASE_URL}?restore=${encodeURIComponent(entry.id)}`, '_blank', 'noopener')
   }
   const showClosedProjects = () => {
     void otherLiveTabIds().then((liveIds) => setClosedList(recentlyClosed(tabIdRef.current, liveIds)))
@@ -424,7 +426,7 @@ function App() {
   return (
     <div className="ide">
       <header className="ide-bar">
-        <div className="ide-brand"><span className="ide-brand-mark" aria-hidden="true"><GlpythonMark size={22} /></span><span>glpython</span></div>
+        <div className="ide-brand"><span className="ide-brand-mark" aria-hidden="true"><GlpythonMark size={22} /></span><span>glpython</span></div>{CHANNEL === 'dev' && <span className="ide-channel-badge" title={t.devChannel}>dev</span>}
         <div className="ide-actions" ref={setActionsContainer} />
         <div className="ide-bar-end">
           {shareCopied && <span className="ide-share-status" role="status">{t.shareCopied}</span>}

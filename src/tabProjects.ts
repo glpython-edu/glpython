@@ -2,6 +2,7 @@ import { initialProject, type Project } from 'glpython-editor'
 import type { LibraryState } from './libraries'
 import type { SharedLink } from './projectShare'
 import type { Feature } from './features'
+import { channelKey } from './channel'
 
 // Per-tab projects (P25), as in WebTigerPython: each browser tab has its own
 // project. Opening a share link never replaces another tab's work, and
@@ -16,11 +17,11 @@ import type { Feature } from './features'
 //   deleted when a tab goes away: a page can't tell a close from Safari
 //   unloading it. A project no open tab holds is listed under «Zuletzt
 //   geschlossen» for 14 days, and a fresh tab offers the last one it finds.
-const SESSION_KEY = 'glpython-tab'
-const STATE_KEY = 'glpythonTab'
-const ENTRY_PREFIX = 'glpython-tab-project:'
+const SESSION_KEY = channelKey('glpython-tab')
+const STATE_KEY = channelKey('glpythonTab')
+const ENTRY_PREFIX = channelKey('glpython-tab-project:')
 // The one project the IDE kept before per-tab projects; taken over once.
-const LEGACY_KEY = 'glpython-project'
+const LEGACY_KEY = channelKey('glpython-project')
 const KEEP_MS = 14 * 24 * 60 * 60 * 1000
 
 export type TabEntry = {
@@ -203,7 +204,7 @@ export function newTabEntry(project: Project, savedFingerprint: string, changedA
 
 // The ids the other open tabs hold, asked over a BroadcastChannel: each
 // open IDE tab answers with its own (see answerTabQueries).
-const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('glpython-tabs')
+const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(channelKey('glpython-tabs'))
 export function answerTabQueries(currentId: () => string): () => void {
   if (!channel) return () => undefined
   const answer = (event: MessageEvent) => { if (event.data?.type === 'who') channel.postMessage({ type: 'here', id: currentId() }) }
