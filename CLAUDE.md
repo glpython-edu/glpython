@@ -44,9 +44,19 @@ The one automated check is `test:browser` (`scripts/check-ide-browser.mjs`): `pl
 
 MIT (`LICENSE`). `THIRD_PARTY_NOTICES.md` lists what the build bundles, with license texts; the build strips license comments, so `npm run build` copies `LICENSE` and the notices into `dist/` (the deployed site). When a dependency is added or changed, update it: the bundled packages are the `node_modules` paths in the source maps of `npx vite build --sourcemap`.
 
+## Branches and merging
+
+- `main` is live: https://glpython-edu.github.io/. `dev` is the dev channel: https://glpython-edu.github.io/dev/, against glpython-editor's `dev`.
+- Work on a branch from `dev`; PRs target `dev` and are squash-merged.
+- Merge into `dev` only when the prompt says «Merge into `dev`: allowed» and CI is green. Without that line, open the PR and wait.
+- Never merge into `main`. The promotion `dev` → `main` is a PR the instructor merges, as a merge commit. Tag afterwards on `main` (as before), then the IDE bump.
+- Before a promotion, say what is on `dev` and not yet on `main`, and whether it was tested on the dev channel (https://glpython-edu.github.io/glpython-editor/dev/, https://glpython-edu.github.io/dev/, the macro's flag).
+- An urgent fix may go straight to `main` (PR from a branch off `main`) only with the instructor's explicit approval in the chat. Right after it, merge `main` back into `dev` with a merge-commit PR.
+- GitHub enforces part of this with rulesets on both branches: changes only through a PR, the CI check `check` green, no force push, no deletion, no required review; `main` takes only merge commits, `dev` squash or merge commits. GitHub can't tell the instructor and Claude apart (one account), so the rules above are what keeps `main` the instructor's.
+
 ## Conventions
 
-- Work on a branch from `main`, one PR per package of work, CI green before handing over. Merging to `main` deploys the IDE.
+- Work on a branch from `dev` (see «Branches and merging»), one PR per package of work, CI green before handing over. Merging to `main` deploys the IDE, merging to `dev` the dev IDE.
 - UI texts in German and English. German uses Swiss spelling (ss, no ß) and never addresses the learner as «du» or «Sie».
 - Behaviour must match CPython. The runtime lives in glpython-editor, so a Python discrepancy is fixed there.
 - Report follow-ups instead of fixing them silently.
