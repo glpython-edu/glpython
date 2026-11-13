@@ -11,6 +11,7 @@ button { font: inherit; }
 .ide :is(button, a, input, [role="separator"]):focus-visible { outline: 2px solid var(--glp-accent); outline-offset: 2px; }
 .ide-bar { min-height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 8px 16px; border-bottom: 1px solid var(--glp-border); }
 .ide-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; }
+.ide-channel-badge { flex: none; padding: 2px 8px; color: var(--glp-warning); background: var(--glp-warning-bg); border: 1px solid var(--glp-warning); border-radius: var(--glp-radius); font: 700 12px/1.4 var(--glp-font-ui); letter-spacing: .04em; text-transform: uppercase; }
 .ide-brand-mark { width: 28px; height: 28px; display: grid; place-items: center; color: var(--glp-on-accent); background: var(--glp-accent); border-radius: var(--glp-radius); }
 .ide-actions { display: flex; }
 .ide-bar-end { margin-left: auto; display: flex; align-items: center; gap: 8px; }

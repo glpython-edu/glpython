@@ -16,6 +16,7 @@ type ShellStrings = {
   shareLinkPromptLabel: string
   share: string
   shareCopied: string
+  devChannel: string
   moreActions: string
   files: string
   closeFiles: string
@@ -91,6 +92,7 @@ export const translations: Record<Locale, Translation> = {
     shareLinkPromptLabel: 'Copy this share link:',
     share: 'Share',
     shareCopied: 'Link copied ✓',
+    devChannel: 'Dev channel: a test version, not for learners. Links from here open the test version too.',
     moreActions: 'More actions',
     files: 'Files',
     closeFiles: 'Close files',
@@ -168,6 +170,7 @@ export const translations: Record<Locale, Translation> = {
     shareLinkPromptLabel: 'Diesen Freigabelink kopieren:',
     share: 'Teilen',
     shareCopied: 'Link kopiert ✓',
+    devChannel: 'Dev-Kanal: eine Testversion, nicht für Lernende. Links von hier öffnen ebenfalls die Testversion.',
     moreActions: 'Weitere Aktionen',
     files: 'Dateien',
     closeFiles: 'Dateien schliessen',
