@@ -531,7 +531,10 @@ try {
     assert.deepEqual(await page.locator('.visualizer-mode button').allInnerTexts(), ['Kasten', 'Ersetzung', 'Baum'])
     await page.locator('.visualizer-mode button', { hasText: 'Baum' }).click()
     await page.getByRole('button', { name: 'Letzter Schritt' }).click()
-    await page.locator('.locals-row[data-name="baum"] .value-tree').first().waitFor({ timeout: 10000 })
+    // A global variable's tree is in its box, on hover over its entry in the
+    // visualizer's footer (glpython-editor v0.1.34, P53).
+    await page.locator('.visualizer-globals .locals-row[data-name="baum"]').hover()
+    await page.locator('.visualizer-globals-peek .value-tree').first().waitFor({ timeout: 10000 })
     await context.close()
   })
 
